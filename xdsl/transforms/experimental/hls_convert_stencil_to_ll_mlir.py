@@ -198,7 +198,17 @@ class StencilExternalLoadToHLSExternalLoad(RewritePattern):
         copy_stencil_stream_lst = []
         # TODO: we are generating 3 copies for now. This is what we need for pw_advection, but should be generalised for codes
         # with a different number of components
-        for _ in range(3):
+        n_components = 0
+        for _op in op.parent_op().body.blocks[0].ops:
+            if isinstance(_op, ApplyOp):
+                apply_op = _op
+                for op_in_apply in apply_op.region.blocks[0].ops:
+                    if isinstance(op_in_apply, stencil.ReturnOp):
+                        return_op = op_in_apply
+                        n_components = len(return_op.arg)
+
+        print("N COMPONENTS: ", n_components)
+        for _ in range(n_components):
             copy_stencil_stream = HLSStream.get(stencil_type)
 
             one_int = Constant.from_int_and_width(1, i32)
@@ -232,6 +242,7 @@ class StencilExternalLoadToHLSExternalLoad(RewritePattern):
             builder.insert(yield_op)
 
         load_data_dataflow = PragmaDataflow(load_data_region)
+        load_data_dataflow.attributes["function"] = builtin.StringAttr("load_data")
 
         shift_buffer_call = Call(
             "shift_buffer",
@@ -246,6 +257,9 @@ class StencilExternalLoadToHLSExternalLoad(RewritePattern):
             builder.insert(yield_op)
 
         shift_buffer_dataflow = PragmaDataflow(shift_buffer_region)
+        shift_buffer_dataflow.attributes["function"] = builtin.StringAttr(
+            "shift_buffer"
+        )
 
         n_idx = arith.IndexCastOp(copy_n, IndexType())
 
@@ -261,6 +275,9 @@ class StencilExternalLoadToHLSExternalLoad(RewritePattern):
             builder.insert(yield_op)
 
         duplicateStream_dataflow = PragmaDataflow(duplicateStream_region)
+        duplicateStream_dataflow.attributes["function"] = builtin.StringAttr(
+            "duplicate_stream"
+        )
 
         ndims = len(field.type.get_shape())
         if inout is IN and ndims == 3:
@@ -514,6 +531,7 @@ def transform_apply_into_loop(
         builder.insert(HLSYield.get())
 
     p_dataflow = PragmaDataflow(p_region)
+    p_dataflow.attributes["function"] = builtin.StringAttr("compute")
 
     boilerplate += [
         size_x,
@@ -807,6 +825,9 @@ class StencilExternalStoreToHLSWriteData(RewritePattern):
                 builder.insert(hls_yield_op)
 
             write_data_dataflow = PragmaDataflow(write_data_df_region)
+            write_data_dataflow.attributes["function"] = builtin.StringAttr(
+                "write_data"
+            )
 
             rewriter.insert_op_after_matched_op(
                 [shape_x, shape_y, shape_z, write_data_dataflow]
