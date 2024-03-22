@@ -26,9 +26,6 @@ def is_parent(op, parent):
     return False
 
 
-ops_out_of_function = dict()
-
-
 @dataclass
 class DataflowToFunc(RewritePattern):
     @op_type_rewrite_pattern
@@ -48,17 +45,25 @@ class DataflowToFunc(RewritePattern):
         df_function = func.FuncOp.from_region(df_function_name, [], [], dataflow_body)
 
         # Check which operands have definitions outside the dataflow function. They should
-        # either copied in the body of the function or become arugments.
-        ops_out_of_function[df_function] = set()
+        # either copied in the body of the function or become arguments.
+        #
+        # Here the operands whose parent operations are not in the dataflow function are added
+        # as arguments to the function. The corresponding arguments are added to the block and
+        # linked to each operand.
+        input_lst = []
+        operand_idx = 0
         for func_op in df_function.body.ops:
             for operand in func_op.operands:
                 if not is_parent(operand, df_function):
-                    ops_out_of_function[df_function].add(operand)
+                    n_args = len(df_function.body.blocks[0].args)
+                    df_function.body.blocks[0].insert_arg(operand.type, n_args)
+                    func_op.operands[operand_idx] = df_function.body.blocks[0].args[
+                        n_args
+                    ]
+                    input_lst.append(operand.type)
+                operand_idx += 1
 
-        input_lst = [_op.type for _op in ops_out_of_function[df_function]]
         df_function.function_type = builtin.FunctionType.from_lists(input_lst, [])
-        for _type in reversed(input_lst):
-            df_function.body.blocks[0].insert_arg(_type, 0)
 
         function_list.append(df_function)
 
