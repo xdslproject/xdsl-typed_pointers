@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from xdsl.dialects import builtin, func
+from xdsl.dialects import builtin, func, scf
 from xdsl.dialects.experimental.hls import PragmaDataflow
 from xdsl.ir import MLContext
 from xdsl.passes import ModulePass
@@ -26,19 +26,33 @@ def is_parent(op, parent):
     return False
 
 
+def propagate_for_args(op, df_function):
+    for operand in op.operands:
+        if not is_parent(operand, df_function):
+            operand.owner.detach()
+            df_function.body.blocks[0].insert_op_before(
+                operand.owner, df_function.body.blocks[0].first_op
+            )
+            propagate_for_args(operand.owner, df_function)
+
+
 def walk_body(body, input_lst, df_function):
     for op in body.ops:
-        operand_idx = 0
+        if isinstance(op, scf.For) or isinstance(op, scf.ParallelOp):
+            propagate_for_args(op, df_function)
+
         for other_body in op.regions:
             walk_body(other_body, input_lst, df_function)
 
-        for operand in op.operands:
-            if not is_parent(operand, df_function):
-                n_args = len(df_function.body.blocks[0].args)
-                df_function.body.blocks[0].insert_arg(operand.type, n_args)
-                op.operands[operand_idx] = df_function.body.blocks[0].args[n_args]
-                input_lst.append(operand.type)
-            operand_idx += 1
+        if not (isinstance(op, scf.For) or isinstance(op, scf.ParallelOp)):
+            operand_idx = 0
+            for operand in op.operands:
+                if not is_parent(operand, df_function):
+                    n_args = len(df_function.body.blocks[0].args)
+                    df_function.body.blocks[0].insert_arg(operand.type, n_args)
+                    op.operands[operand_idx] = df_function.body.blocks[0].args[n_args]
+                    input_lst.append(operand.type)
+                operand_idx += 1
 
 
 def walk_function_ops(df_function):
@@ -68,7 +82,7 @@ class DataflowToFunc(RewritePattern):
         df_function = func.FuncOp.from_region(df_function_name, [], [], dataflow_body)
 
         # Check which operands have definitions outside the dataflow function. They should
-        # either copied in the body of the function or become arguments.
+        # either be copied in the body of the function or become arguments.
         #
         # Here the operands whose parent operations are not in the dataflow function are added
         # as arguments to the function. The corresponding arguments are added to the block and
