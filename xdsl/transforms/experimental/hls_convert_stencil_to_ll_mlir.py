@@ -207,7 +207,6 @@ class StencilExternalLoadToHLSExternalLoad(RewritePattern):
                         return_op = op_in_apply
                         n_components = len(return_op.arg)
 
-        print("N COMPONENTS: ", n_components)
         for _ in range(n_components):
             copy_stencil_stream = HLSStream.get(stencil_type)
 
@@ -552,6 +551,63 @@ def transform_apply_into_loop(
     return p_dataflow
 
 
+def find_stream(block_arg, block_idx, stream_list, n_clone):
+    # Look for the function argument that maps to the stencil apply argument
+    apply_op = block_arg.owner.parent.parent
+    apply_op_operand = apply_op.operands[block_arg.index]
+
+    parent = apply_op_operand.owner
+
+    while True:
+        if isinstance(parent.operands[0].owner, llvm.UndefOp):
+            func_block_arg = parent.operands[1]
+            break
+
+        parent = parent.operands[0].owner
+
+    stencil_func = func_block_arg.owner.parent.parent
+
+    # This is the function argument that the stream has to match
+    stencil_func_arg = stencil_func.body.blocks[0].args[func_block_arg.index]
+
+    streams_for_clone = []
+
+    for i in range(len(stream_list)):
+        streams_for_clone.append(stream_list[i][n_clone])
+
+    matched_stream = None
+    for stream in streams_for_clone:
+        duplicate_hls_stream = stream.results[0]
+
+        # Get the streams in the duplicate loop
+        hls_write = None
+        for use in duplicate_hls_stream.uses:
+            if isinstance(use.operation, HLSStreamWrite):
+                hls_write = use.operation
+
+        hls_read = hls_write.operands[0].owner
+        stream_shift = hls_read.operands[0]
+
+        shift_func = None
+        for use in stream_shift.uses:
+            if isinstance(use.operation, func.Call):
+                shift_func = use.operation
+
+        load_stream = shift_func.arguments[0]
+
+        load_func = None
+        for use in load_stream.uses:
+            if isinstance(use.operation, func.Call) and use.operation != shift_func:
+                load_func = use.operation
+        data_arg = load_func.arguments[0]
+
+        if data_arg == stencil_func_arg:
+            matched_stream = stream
+            break
+
+    return matched_stream
+
+
 @dataclass
 class ApplyOpToHLS(RewritePattern):
     module: builtin.ModuleOp
@@ -571,7 +627,8 @@ class ApplyOpToHLS(RewritePattern):
 
         # We replace the temp arguments by HLS streams. Only for the 3D temps
         for k in range(len(apply_clones_lst)):
-            # Insert the HLS stream operands and their corresponding block arguments for reading from the shift buffer and writing # to external memory # We replace by streams only the 3D temps. The rest should be left as is operand_stream = dict()
+            # Insert the HLS stream operands and their corresponding block arguments for reading from the shift buffer and writing
+            # to external memory # We replace by streams only the 3D temps. The rest should be left as is operand_stream = dict()
             current_stream = 0
 
             new_operands_lst = []
@@ -582,7 +639,10 @@ class ApplyOpToHLS(RewritePattern):
                 n_dims = len(operand.type.bounds.lb)
 
                 if n_dims == 3:
-                    stream = self.shift_streams[current_stream][k]
+                    # We find the stream that maps to the same function argument (memory port) than the ApplyOp argument
+                    stream = find_stream(
+                        apply_clone.region.block.args[i], i, self.shift_streams, k
+                    )
                     rewriter.modify_block_argument_type(
                         apply_clone.region.block.args[i], stream.results[0].type
                     )
@@ -623,7 +683,7 @@ class ApplyOpToHLS(RewritePattern):
         body_block = op.region.blocks[0]
         return_op = next(o for o in body_block.ops if isinstance(o, ReturnOp))
 
-        # We are going to split the apply by the operations conducive to each returned value
+        # We are going to split the apply by the operations cond#ucive to each returned value
         boilerplate = [[] for _ in range(len(return_op.arg))]
         new_apply_lst = []
         new_return_component_lst = []
@@ -716,15 +776,25 @@ class ApplyOpToHLS(RewritePattern):
         rewriter.replace_matched_op(new_apply)
 
 
-def collectComponentOperations(op: Operation, component_operations, operation_indices):
+# The first call argument deals with the last operation in the block
+def collectComponentOperations(
+    op: Operation, component_operations, operation_indices, first_call=True
+):
     parent_op = op.owner
+
+    if first_call:
+        block_index = parent_op.parent_block().get_operation_index(parent_op)
+        component_operations[block_index] = parent_op
+        operation_indices.add(block_index)
 
     for operand in parent_op.operands:
         if not isinstance(operand, BlockArgument):
             block_index = operand.op.parent_block().get_operation_index(operand.op)
             component_operations[block_index] = operand.op
             operation_indices.add(block_index)
-            collectComponentOperations(operand, component_operations, operation_indices)
+            collectComponentOperations(
+                operand, component_operations, operation_indices, False
+            )
 
 
 def get_number_external_stores(op: FuncOp):
