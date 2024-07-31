@@ -54,7 +54,6 @@ from xdsl.transforms import (
 from xdsl.transforms.experimental import (
     convert_stencil_to_ll_mlir,
     hls_convert_stencil_to_ll_mlir,
-    hls_debug,
     lower_hls,
     replace_incompatible_fpga,
     split_dataflow,
@@ -126,7 +125,6 @@ def get_all_passes() -> list[type[ModulePass]]:
         lower_hls.LowerHLSPass,
         replace_incompatible_fpga.ReplaceIncompatibleFPGA,
         split_dataflow.SplitDataflowPass,
-        hls_debug.HLSDebug,
     ]
 
 
