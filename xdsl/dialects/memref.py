@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Generic, Iterable, Sequence, TypeAlias, TypeVar, cast
+from typing import TYPE_CHECKING, Generic, Iterable, Sequence, TypeAlias, TypeVar, cast, Annotated
 
 from xdsl.dialects.builtin import (
     AnyIntegerAttr,
@@ -626,6 +626,27 @@ class CopyOp(IRDLOperation):
                 "Expected source and destination to have the same element type."
             )
 
+ReassociationAttr = ArrayAttr[
+    ArrayAttr[IntegerAttr[Annotated[IntegerType, IntegerType(64)]]]
+]
+
+class AlterShapeOp(IRDLOperation):
+    src: Operand = operand_def(MemRefType)
+    result: OpResult = result_def(MemRefType)
+    reassociation = attr_def(ReassociationAttr)
+    #assembly_format = (
+    #    "$src $reassociation attr-dict `:` type($src) `into` type($result)"
+    #)
+
+
+@irdl_op_definition
+class CollapseShapeOp(AlterShapeOp):
+    """
+    https://mlir.llvm.org/docs/Dialects/MemRef/#memrefcollapse_shape-memrefcollapseshapeop
+    """
+
+    name = "memref.collapse_shape"
+
 
 MemRef = Dialect(
     [
@@ -633,6 +654,7 @@ MemRef = Dialect(
         Store,
         Alloc,
         Alloca,
+        CollapseShapeOp,
         CopyOp,
         Dealloc,
         GetGlobal,
