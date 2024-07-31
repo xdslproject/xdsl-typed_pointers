@@ -125,6 +125,13 @@ class Parser(AttrParser):
             parsed_ops: list[Operation] = []
 
             while self._current_token.kind != Token.Kind.EOF:
+                if self._current_token.kind != Token.Kind.EOF:
+                    if self._current_token.kind in (
+                        Token.Kind.HASH_IDENT,
+                        Token.Kind.EXCLAMATION_IDENT,
+                    ):
+                        self._parse_alias_def()
+                        continue
                 if (parsed_op := self.parse_optional_operation()) is None:
                     self.raise_error("Could not parse entire input!")
                 parsed_ops.append(parsed_op)
@@ -920,3 +927,19 @@ class Parser(AttrParser):
             self.parse_unresolved_operand,
             " in operation argument list",
         )
+
+    def _parse_alias_def(self):
+        if (
+            token := self._parse_optional_token_in(
+                [Token.Kind.EXCLAMATION_IDENT, Token.Kind.HASH_IDENT]
+            )
+        ) is None:
+            self.raise_error("expected attribute name")
+
+        type_or_attr_name = token.text
+        if type_or_attr_name in self.attribute_aliases:
+            self.raise_error(f"re-declaration of alias '{type_or_attr_name}")
+
+        self.parse_punctuation("=", "after attribute alias name")
+        value = self.parse_attribute()
+        self.attribute_aliases[type_or_attr_name] = value
