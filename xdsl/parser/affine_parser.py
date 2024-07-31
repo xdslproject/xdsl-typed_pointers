@@ -146,7 +146,6 @@ class AffineParser(BaseParser):
         affine-map
            ::= affine-space `->` multi-affine-expr
         """
-        print("HELLO FROM PARSE AFFINE MAP")
         # Parse affine space
         dims, syms = self._parse_affine_space()
         # Parse : delimiter

@@ -130,7 +130,6 @@ class Parser(AttrParser):
                         Token.Kind.HASH_IDENT,
                         Token.Kind.EXCLAMATION_IDENT,
                     ):
-                        print("BEFORE PARSE ALIAS DEF")
                         self._parse_alias_def()
                         continue
                 if (parsed_op := self.parse_optional_operation()) is None:
@@ -727,7 +726,6 @@ class Parser(AttrParser):
         if (op_name := self._parse_optional_token(Token.Kind.BARE_IDENT)) is not None:
             # Custom operation format
             op_type = self._get_op_by_name(op_name.text)
-            print("(1) OP TYPE: ", op_type)
             op = op_type.parse(self)
         else:
             # Generic operation format
@@ -735,7 +733,6 @@ class Parser(AttrParser):
                 self.parse_optional_str_literal, "operation name expected"
             )
             op_type = self._get_op_by_name(op_name)
-            print("(2) OP TYPE: ", op_type)
             op = self._parse_generic_operation(op_type)
 
         n_bound_results = sum(r[1] for r in bound_results)

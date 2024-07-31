@@ -150,7 +150,6 @@ class BaseParser:
         Parse a specific token, and raise an error if it is not present.
         Returns the token that was parsed.
         """
-        print("CURRENT TOKEN KIND: ", self._current_token.kind)
         if self._current_token.kind != expected_kind:
             self.raise_error(error_msg, self._current_token.span)
         current_token = self._current_token
@@ -251,7 +250,6 @@ class BaseParser:
         while self._parse_optional_token(Token.Kind.COMMA) is not None:
             elems.append(parse())
 
-        print("RIGHT PUNCTUATION: ", right_punctuation)
         # Parse the closing bracket
         self.parse_punctuation(right_punctuation, context_msg)
 

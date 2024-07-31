@@ -93,7 +93,6 @@ class AttrParser(BaseParser):
         In the case where the attribute or type is using the opaque syntax,
         the attribute or type mnemonic should have already been parsed.
         """
-        print("PARSING ATTRIBUTE BODY. ATTR: ", attr_name)
         pretty = "." in attr_name
         if not pretty:
             self.parse_punctuation("<")
@@ -107,7 +106,6 @@ class AttrParser(BaseParser):
             attr_name,
             create_unregistered_as_type=is_type,
         )
-        print("ATTR DEF: ", attr_def)
         if attr_def is None:
             self.raise_error(f"'{attr_name}' is not registered")
         if issubclass(attr_def, UnregisteredAttr):
@@ -121,13 +119,10 @@ class AttrParser(BaseParser):
             return attr
 
         elif issubclass(attr_def, ParametrizedAttribute):
-            print("PARAMETRIZED")
             param_list = attr_def.parse_parameters(self)
             return attr_def.new(param_list)
         elif issubclass(attr_def, Data):
-            print("DATA")
             param: Any = attr_def.parse_parameter(self)
-            print("PARAM: ", param)
             return cast(Data[Any], attr_def(param))
         else:
             raise TypeError("Attributes are either ParametrizedAttribute or Data.")
@@ -135,7 +130,6 @@ class AttrParser(BaseParser):
     def _parse_extended_type_or_attribute(
         self, attr_or_dialect_name: str, is_type: bool = True
     ) -> Attribute:
-        print("--------> HELLO FROM PARSE EXTENDED TYPE OR ATTRIBUTE. ATTR_NAME: ", attr_or_dialect_name)
         """
         Parse the contents of a dialect or alias type or attribute, with format:
             dialect-attr-contents ::= `<` dialect-attr-contents+ `>`
@@ -159,7 +153,6 @@ class AttrParser(BaseParser):
         if not is_pretty_name:
             # An attribute or type alias
             if self.parse_optional_punctuation("<") is None:
-                print("############# PARSE <")
                 alias_name = ("!" if is_type else "#") + attr_or_dialect_name
                 if alias_name not in self.attribute_aliases:
                     self.raise_error(f"undefined symbol alias '{alias_name}'")
@@ -181,10 +174,8 @@ class AttrParser(BaseParser):
         )
 
         if not is_pretty_name:
-            print("NOT PRETTY NAME")
             self.parse_punctuation(">")
 
-        print("RETURN ATTR: ", attr)
 
         return attr
 
@@ -266,7 +257,6 @@ class AttrParser(BaseParser):
             name = name.span.text
         else:
             name = self.parse_optional_str_literal()
-        print("ATTRIBUTE ENTRY: ", name)
 
         if name is None:
             self.raise_error(
