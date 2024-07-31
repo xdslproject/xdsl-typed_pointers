@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Literal, NoReturn, cast
 
 import xdsl.parser.affine_parser as affine_parser
@@ -73,6 +73,8 @@ class AttrParser(BaseParser):
     """
 
     ctx: MLContext
+
+    attribute_aliases: dict[str, Attribute] = field(default_factory=dict)
 
     def parse_optional_type(self) -> Attribute | None:
         """
