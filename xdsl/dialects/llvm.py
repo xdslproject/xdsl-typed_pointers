@@ -4,6 +4,8 @@ from enum import Enum
 from types import EllipsisType
 from typing import Literal, Sequence
 
+from dataclasses import dataclass
+
 from xdsl.dialects.builtin import (
     AnyIntegerAttr,
     ArrayAttr,
@@ -1109,8 +1111,8 @@ class FastMathFlag(Enum):
         return None
 
 
-@irdl_attr_definition
-class FastMathAttr(Data[tuple[FastMathFlag, ...]]):
+@dataclass(frozen=True)
+class FastMathAttrBase(Data[tuple[FastMathFlag, ...]]):
     name = "llvm.fastmath"
 
     @property
@@ -1134,29 +1136,90 @@ class FastMathAttr(Data[tuple[FastMathFlag, ...]]):
 
     @classmethod
     def parse_parameter(cls, parser: AttrParser) -> tuple[FastMathFlag, ...]:
-        flags = FastMathFlag.try_parse(parser)
-        if flags is None:
-            return tuple()
+        with parser.in_angle_brackets():
+            flags = FastMathFlag.try_parse(parser)
+            if flags is None:
+                return tuple()
 
-        while parser.parse_optional_punctuation(",") is not None:
-            flag = parser.expect(
-                lambda: FastMathFlag.try_parse(parser), "fastmath flag expected"
-            )
-            flags.update(flag)
+            while parser.parse_optional_punctuation(",") is not None:
+                flag = parser.expect(
+                    lambda: FastMathFlag.try_parse(parser), "fastmath flag expected"
+                )
+                flags.update(flag)
 
-        return tuple(flags)
+            return tuple(flags)
 
     def print_parameter(self, printer: Printer):
-        flags = self.data
-        if len(flags) == 0:
-            printer.print("none")
-        elif len(flags) == len(FastMathFlag):
-            printer.print("fast")
-        else:
-            # make sure we emit flags in a consistent order
-            printer.print(
-                ",".join(flag.value for flag in FastMathFlag if flag in flags)
-            )
+        with printer.in_angle_brackets():
+            flags = self.data
+            if len(flags) == 0:
+                printer.print("none")
+            elif len(flags) == len(FastMathFlag):
+                printer.print("fast")
+            else:
+                # make sure we emit flags in a consistent order
+                printer.print(
+                    ",".join(flag.value for flag in FastMathFlag if flag in flags)
+                )
+
+@irdl_attr_definition
+class FastMathAttr(FastMathAttrBase):
+    name = "llvm.fastmath"
+
+    def __init__(self, flags: None | Sequence[FastMathFlag] | Literal["none", "fast"]):
+        # irdl_attr_definition defines an __init__ if none is defined, so we need to
+        # explicitely define one here.
+        super().__init__(flags)
+
+#@irdl_attr_definition
+#class FastMathAttr(Data[tuple[FastMathFlag, ...]]):
+#    name = "llvm.fastmath"
+#
+#    @property
+#    def flags(self) -> set[FastMathFlag]:
+#        """
+#        Returns a copy of the fast math flags.
+#        """
+#        return set(self.data)
+#
+#    def __init__(self, flags: None | Sequence[FastMathFlag] | Literal["none", "fast"]):
+#        flags_: set[FastMathFlag]
+#        match flags:
+#            case "none" | None:
+#                flags_ = set()
+#            case "fast":
+#                flags_ = set(FastMathFlag)
+#            case other:
+#                flags_ = set(other)
+#
+#        super().__init__(tuple(flags_))
+#
+#    @classmethod
+#    def parse_parameter(cls, parser: AttrParser) -> tuple[FastMathFlag, ...]:
+#        print("LLVM FAST MATH ATTR PARSE")
+#        flags = FastMathFlag.try_parse(parser)
+#        if flags is None:
+#            return tuple()
+#
+#        while parser.parse_optional_punctuation(",") is not None:
+#            flag = parser.expect(
+#                lambda: FastMathFlag.try_parse(parser), "fastmath flag expected"
+#            )
+#            flags.update(flag)
+#
+#        return tuple(flags)
+#
+#    def print_parameter(self, printer: Printer):
+#        flags = self.data
+#        if len(flags) == 0:
+#            printer.print("none")
+#        elif len(flags) == len(FastMathFlag):
+#            printer.print("fast")
+#        else:
+#            # make sure we emit flags in a consistent order
+#            printer.print(
+#                ",".join(flag.value for flag in FastMathFlag if flag in flags)
+#            )
 
 
 @irdl_op_definition

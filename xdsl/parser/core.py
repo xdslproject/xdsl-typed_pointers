@@ -130,6 +130,7 @@ class Parser(AttrParser):
                         Token.Kind.HASH_IDENT,
                         Token.Kind.EXCLAMATION_IDENT,
                     ):
+                        print("BEFORE PARSE ALIAS DEF")
                         self._parse_alias_def()
                         continue
                 if (parsed_op := self.parse_optional_operation()) is None:
@@ -399,7 +400,8 @@ class Parser(AttrParser):
                             | [^[]<>(){}\0]+
         """
         if (token := self._parse_optional_token(Token.Kind.HASH_IDENT)) is not None:
-            return self._parse_dialect_type_or_attribute_inner(token.text[1:], False)
+            #return self._parse_dialect_type_or_attribute_inner(token.text[1:], False)
+            return self._parse_extended_type_or_attribute(token.text[1:], False)
         return self._parse_optional_builtin_attr()
 
     def _parse_dialect_type_or_attribute_inner(
@@ -725,6 +727,7 @@ class Parser(AttrParser):
         if (op_name := self._parse_optional_token(Token.Kind.BARE_IDENT)) is not None:
             # Custom operation format
             op_type = self._get_op_by_name(op_name.text)
+            print("(1) OP TYPE: ", op_type)
             op = op_type.parse(self)
         else:
             # Generic operation format
@@ -732,6 +735,7 @@ class Parser(AttrParser):
                 self.parse_optional_str_literal, "operation name expected"
             )
             op_type = self._get_op_by_name(op_name)
+            print("(2) OP TYPE: ", op_type)
             op = self._parse_generic_operation(op_type)
 
         n_bound_results = sum(r[1] for r in bound_results)
@@ -750,7 +754,7 @@ class Parser(AttrParser):
                 ssa_val_name, op.results[res_idx : res_idx + res_size], res_span
             )
             res_idx += res_size
-
+ 
         return op
 
     def _get_op_by_name(self, name: str) -> type[Operation]:
@@ -929,6 +933,12 @@ class Parser(AttrParser):
         )
 
     def _parse_alias_def(self):
+        """
+        Parse an attribute or type alias definition with format:
+            alias-def           ::= type-alias-def | attribute-alias-def
+            type-alias-def      ::= `!` bare-id `=` type
+            attribute-alias-def ::= `#` `alias` bare-id `=` attribute
+        """
         if (
             token := self._parse_optional_token_in(
                 [Token.Kind.EXCLAMATION_IDENT, Token.Kind.HASH_IDENT]
@@ -938,7 +948,7 @@ class Parser(AttrParser):
 
         type_or_attr_name = token.text
         if type_or_attr_name in self.attribute_aliases:
-            self.raise_error(f"re-declaration of alias '{type_or_attr_name}")
+            self.raise_error(f"re-declaration of alias '{type_or_attr_name}'")
 
         self.parse_punctuation("=", "after attribute alias name")
         value = self.parse_attribute()

@@ -4,6 +4,7 @@ that is inherited from the different parsers used in xDSL.
 """
 
 from dataclasses import dataclass
+from contextlib import contextmanager
 from enum import Enum
 from typing import Callable, Iterable, NoReturn, TypeVar, overload
 
@@ -47,6 +48,14 @@ class BaseParser:
     """
 
     _parser_state: ParserState
+
+    @contextmanager
+    def in_angle_brackets(self):
+        self.parse_punctuation("<")
+        try:
+            yield
+        finally:
+            self.parse_punctuation(">")
 
     @overload
     def raise_error(
@@ -141,6 +150,7 @@ class BaseParser:
         Parse a specific token, and raise an error if it is not present.
         Returns the token that was parsed.
         """
+        print("CURRENT TOKEN KIND: ", self._current_token.kind)
         if self._current_token.kind != expected_kind:
             self.raise_error(error_msg, self._current_token.span)
         current_token = self._current_token
@@ -241,6 +251,7 @@ class BaseParser:
         while self._parse_optional_token(Token.Kind.COMMA) is not None:
             elems.append(parse())
 
+        print("RIGHT PUNCTUATION: ", right_punctuation)
         # Parse the closing bracket
         self.parse_punctuation(right_punctuation, context_msg)
 

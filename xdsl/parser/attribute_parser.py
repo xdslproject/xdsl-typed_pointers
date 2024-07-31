@@ -76,6 +76,118 @@ class AttrParser(BaseParser):
 
     attribute_aliases: dict[str, Attribute] = field(default_factory=dict)
 
+    def _parse_dialect_type_or_attribute_body(
+        self,
+        attr_name: str,
+        is_type: bool,
+        is_opaque: bool,
+        starting_opaque_pos: Position | None,
+    ):
+        """
+        Parse the contents of an attribute or type, with syntax:
+            dialect-attr-contents ::= `<` dialect-attr-contents+ `>`
+                                    | `(` dialect-attr-contents+ `)`
+                                    | `[` dialect-attr-contents+ `]`
+                                    | `{` dialect-attr-contents+ `}`
+                                    | [^[]<>(){}\0]+
+        In the case where the attribute or type is using the opaque syntax,
+        the attribute or type mnemonic should have already been parsed.
+        """
+        print("PARSING ATTRIBUTE BODY. ATTR: ", attr_name)
+        pretty = "." in attr_name
+        if not pretty:
+            self.parse_punctuation("<")
+            attr_name += (
+                "."
+                + self._parse_token(
+                    Token.Kind.BARE_IDENT, "Expected attribute name."
+                ).text
+            )
+        attr_def = self.ctx.get_optional_attr(
+            attr_name,
+            create_unregistered_as_type=is_type,
+        )
+        print("ATTR DEF: ", attr_def)
+        if attr_def is None:
+            self.raise_error(f"'{attr_name}' is not registered")
+        if issubclass(attr_def, UnregisteredAttr):
+            if not is_opaque:
+                if self.parse_optional_punctuation("<") is None:
+                    return attr_def(attr_name, is_type, is_opaque, "")
+            body = self._parse_unregistered_attr_body(starting_opaque_pos)
+            attr = attr_def(attr_name, is_type, is_opaque, body)
+            if not is_opaque:
+                self.parse_punctuation(">")
+            return attr
+
+        elif issubclass(attr_def, ParametrizedAttribute):
+            print("PARAMETRIZED")
+            param_list = attr_def.parse_parameters(self)
+            return attr_def.new(param_list)
+        elif issubclass(attr_def, Data):
+            print("DATA")
+            param: Any = attr_def.parse_parameter(self)
+            print("PARAM: ", param)
+            return cast(Data[Any], attr_def(param))
+        else:
+            raise TypeError("Attributes are either ParametrizedAttribute or Data.")
+
+    def _parse_extended_type_or_attribute(
+        self, attr_or_dialect_name: str, is_type: bool = True
+    ) -> Attribute:
+        print("--------> HELLO FROM PARSE EXTENDED TYPE OR ATTRIBUTE. ATTR_NAME: ", attr_or_dialect_name)
+        """
+        Parse the contents of a dialect or alias type or attribute, with format:
+            dialect-attr-contents ::= `<` dialect-attr-contents+ `>`
+                                    | `(` dialect-attr-contents+ `)`
+                                    | `[` dialect-attr-contents+ `]`
+                                    | `{` dialect-attr-contents+ `}`
+                                    | [^[]<>(){}\0]+
+        The contents will be parsed by a user-defined parser, or by a generic parser
+        if the dialect attribute/type is not registered.
+
+        In the case that the type or attribute is using the opaque syntax (where the
+        identifier parsed is the dialect name), this function will parse the opaque
+        attribute with the following format:
+            opaque-attr-contents ::= `<` bare-ident dialect-attr-contents+ `>`
+        otherwise, it will parse them with the pretty or alias syntax, with format:
+            pretty-or-alias-attr-contents ::= `<` dialect-attr-contents+ `>`
+        """
+        is_pretty_name = "." in attr_or_dialect_name
+        starting_opaque_pos = None
+
+        if not is_pretty_name:
+            # An attribute or type alias
+            if self.parse_optional_punctuation("<") is None:
+                print("############# PARSE <")
+                alias_name = ("!" if is_type else "#") + attr_or_dialect_name
+                if alias_name not in self.attribute_aliases:
+                    self.raise_error(f"undefined symbol alias '{alias_name}'")
+                return self.attribute_aliases[alias_name]
+
+            # An opaque dialect attribute or type
+            # Compared to MLIR, we still go through the symbol parser, instead of the
+            # dialect parser.
+            if not is_pretty_name:
+                attr_name_token = self._parse_token(
+                    Token.Kind.BARE_IDENT, "Expected attribute name."
+                )
+                starting_opaque_pos = attr_name_token.span.end
+
+                attr_or_dialect_name += "." + attr_name_token.text
+
+        attr = self._parse_dialect_type_or_attribute_body(
+            attr_or_dialect_name, is_type, not is_pretty_name, starting_opaque_pos
+        )
+
+        if not is_pretty_name:
+            print("NOT PRETTY NAME")
+            self.parse_punctuation(">")
+
+        print("RETURN ATTR: ", attr)
+
+        return attr
+
     def parse_optional_type(self) -> Attribute | None:
         """
         Parse an xDSL type, if present.
@@ -92,7 +204,8 @@ class AttrParser(BaseParser):
         if (
             token := self._parse_optional_token(Token.Kind.EXCLAMATION_IDENT)
         ) is not None:
-            return self._parse_dialect_type_or_attribute_inner(token.text[1:], True)
+            #return self._parse_dialect_type_or_attribute_inner(token.text[1:], True)
+            return self._parse_extended_type_or_attribute(token.text[1:], True)
         return self._parse_optional_builtin_type()
 
     def parse_type(self) -> Attribute:
@@ -124,7 +237,7 @@ class AttrParser(BaseParser):
                             | [^[]<>(){}\0]+
         """
         if (token := self._parse_optional_token(Token.Kind.HASH_IDENT)) is not None:
-            return self._parse_dialect_type_or_attribute_inner(token.text[1:], False)
+            return self._parse_extended_type_or_attribute(token.text[1:], False)
         return self._parse_optional_builtin_attr()
 
     def parse_attribute(self) -> Attribute:
@@ -153,6 +266,7 @@ class AttrParser(BaseParser):
             name = name.span.text
         else:
             name = self.parse_optional_str_literal()
+        print("ATTRIBUTE ENTRY: ", name)
 
         if name is None:
             self.raise_error(
@@ -168,6 +282,7 @@ class AttrParser(BaseParser):
         attrs = self.parse_optional_comma_separated_list(
             self.Delimiter.BRACES, self._parse_attribute_entry
         )
+
         if attrs is None:
             return dict()
         return dict(attrs)

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Annotated, Generic, TypeVar
+from collections.abc import Sequence
+from typing import Annotated, Generic, TypeVar, Literal
 
 from xdsl.dialects.builtin import (
     AnyFloat,
@@ -16,7 +17,7 @@ from xdsl.dialects.builtin import (
     IntegerAttr,
     IntegerType,
 )
-from xdsl.dialects.llvm import FastMathAttr as LLVMFastMathAttr
+from xdsl.dialects.llvm import FastMathAttr as FastMathAttrBase, FastMathFlag
 from xdsl.ir import Dialect, Operation, OpResult, SSAValue
 from xdsl.ir.core import Attribute
 from xdsl.irdl import (
@@ -27,6 +28,7 @@ from xdsl.irdl import (
     Operand,
     attr_def,
     irdl_op_definition,
+    irdl_attr_definition,
     operand_def,
     opt_attr_def,
     result_def,
@@ -44,12 +46,26 @@ floatingPointLike = ContainerOf(AnyOf([Float16Type, Float32Type, Float64Type]))
 _FloatTypeT = TypeVar("_FloatTypeT", bound=AnyFloat)
 
 
-class FastMathFlagsAttr(LLVMFastMathAttr):
+#class FastMathFlagsAttr(FastMathAttrBase):
+#    """
+#    arith.fastmath is a mirror of LLVMs fastmath flags.
+#    """
+#
+#    name = "arith.fastmath"
+
+@irdl_attr_definition
+class FastMathFlagsAttr(FastMathAttrBase):
     """
     arith.fastmath is a mirror of LLVMs fastmath flags.
     """
 
     name = "arith.fastmath"
+
+    def __init__(self, flags: None | Sequence[FastMathFlag] | Literal["none", "fast"]):
+        print("HELLO FROM THE DEFINTION OF FASTMATHATTR")
+        # irdl_attr_definition defines an __init__ if none is defined, so we need to
+        # explicitely define one here.
+        super().__init__(flags)
 
 
 @irdl_op_definition
@@ -103,6 +119,7 @@ class Constant(IRDLOperation):
 
     @classmethod
     def parse(cls: type[Constant], parser: Parser) -> Constant:
+        print("HELLO FROM PARSE CONSTANT")
         attrs = parser.parse_optional_attr_dict()
 
         p0 = parser.pos
@@ -160,10 +177,51 @@ class BinaryOperation(IRDLOperation, Generic[_T]):
 
     def __hash__(self) -> int:
         return id(self)
+    
+class BinaryOperationWithFastMath(Generic[_T], BinaryOperation[_T]):
+    fastmath = opt_attr_def(FastMathFlagsAttr)
+
+    def __init__(
+        self,
+        operand1: Operation | SSAValue,
+        operand2: Operation | SSAValue,
+        flags: FastMathFlagsAttr | None = None,
+        result_type: Attribute | None = None,
+    ):
+        super().__init__(operand1, operand2, result_type)
+        self.fastmath = flags
+
+    @classmethod
+    def parse(cls, parser: Parser):
+        print("------> PARSING FASTMATH OPERATION")
+        lhs = parser.parse_unresolved_operand()
+        parser.parse_punctuation(",")
+        rhs = parser.parse_unresolved_operand()
+        flags = FastMathFlagsAttr("none")
+        if parser.parse_optional_keyword("fastmath") is not None:
+            flags = FastMathFlagsAttr(FastMathFlagsAttr.parse_parameter(parser))
+        parser.parse_punctuation(":")
+        result_type = parser.parse_type()
+        (lhs, rhs) = parser.resolve_operands([lhs, rhs], 2 * [result_type], parser.pos)
+        return cls(lhs, rhs, flags, result_type)
+
+    def print(self, printer: Printer):
+        printer.print(" ")
+        printer.print_ssa_value(self.lhs)
+        printer.print(", ")
+        printer.print_ssa_value(self.rhs)
+        if self.fastmath is not None and self.fastmath != FastMathFlagsAttr("none"):
+            printer.print(" fastmath")
+            self.fastmath.print_parameter(printer)
+        printer.print(" : ")
+        printer.print_attribute(self.result.type)
 
 
 SignlessIntegerBinaryOp = BinaryOperation[Annotated[Attribute, signlessIntegerLike]]
-FloatingPointLikeBinaryOp = BinaryOperation[Annotated[Attribute, floatingPointLike]]
+#FloatingPointLikeBinaryOp = BinaryOperation[Annotated[Attribute, floatingPointLike]]
+FloatingPointLikeBinaryOp = BinaryOperationWithFastMath[
+    Annotated[Attribute, floatingPointLike]
+]
 IntegerBinaryOp = BinaryOperation[IntegerType]
 
 
