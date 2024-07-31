@@ -1150,17 +1150,19 @@ class FastMathAttrBase(Data[tuple[FastMathFlag, ...]]):
             return tuple(flags)
 
     def print_parameter(self, printer: Printer):
-        with printer.in_angle_brackets():
-            flags = self.data
-            if len(flags) == 0:
-                printer.print("none")
-            elif len(flags) == len(FastMathFlag):
-                printer.print("fast")
-            else:
-                # make sure we emit flags in a consistent order
-                printer.print(
-                    ",".join(flag.value for flag in FastMathFlag if flag in flags)
-                )
+        # TODO: the next statement was in the new xDSL version, but this generated double brackets (<<>>). Removed this for now
+        # until we figure out what the issue is
+        #with printer.in_angle_brackets():
+        flags = self.data
+        if len(flags) == 0:
+            printer.print("none")
+        elif len(flags) == len(FastMathFlag):
+            printer.print("fast")
+        else:
+            # make sure we emit flags in a consistent order
+            printer.print(
+                ",".join(flag.value for flag in FastMathFlag if flag in flags)
+            )
 
 @irdl_attr_definition
 class FastMathAttr(FastMathAttrBase):
