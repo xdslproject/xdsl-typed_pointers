@@ -496,47 +496,47 @@ class DataflowGraph(ModulePass):
         )
         promote_loop_to_func_pass.rewrite_module(op)
 
-        #extract_func_pass = PatternRewriteWalker(
-        #    GreedyRewritePatternApplier(
-        #        [
-        #            ReplaceFuncDeclarationsWithCalls(func_args_map),
-        #        ]
-        #    ),
-        #    apply_recursively=False,
-        #)
-        #extract_func_pass.rewrite_module(op)
+        extract_func_pass = PatternRewriteWalker(
+            GreedyRewritePatternApplier(
+                [
+                    ReplaceFuncDeclarationsWithCalls(func_args_map),
+                ]
+            ),
+            apply_recursively=False,
+        )
+        extract_func_pass.rewrite_module(op)
 
-        #dce_pass = PatternRewriteWalker(
-        #    GreedyRewritePatternApplier(
-        #        [
-        #            DeadCodeElimination()
-        #        ]
-        #    ),
-        #    apply_recursively=False,
-        #)
-        #dce_pass.rewrite_module(op)
+        dce_pass = PatternRewriteWalker(
+            GreedyRewritePatternApplier(
+                [
+                    DeadCodeElimination()
+                ]
+            ),
+            apply_recursively=False,
+        )
+        dce_pass.rewrite_module(op)
 
-        ##df_dialect_pass = PatternRewriteWalker(
-        ##    GreedyRewritePatternApplier(
-        ##        [
-        ##            PromoteFuncsToNodes(),
-        ##        ]
-        ##    ),
-        ##    apply_recursively=False,
-        ##)
-        ##df_dialect_pass.rewrite_module(op)
+        df_dialect_pass = PatternRewriteWalker(
+            GreedyRewritePatternApplier(
+                [
+                    PromoteFuncsToNodes(),
+                ]
+            ),
+            apply_recursively=False,
+        )
+        df_dialect_pass.rewrite_module(op)
 
-        ##df_graph_pass = PatternRewriteWalker(
-        ##    GreedyRewritePatternApplier(
-        ##        [
-        ##            GenerateDataflowGraph(),
-        ##            DfCallCleanup(),
-        ##            #DeallocCleanup()
-        ##        ]
-        ##    ),
-        ##    apply_recursively=False,
-        ##)
-        ##df_graph_pass.rewrite_module(op)
+        df_graph_pass = PatternRewriteWalker(
+            GreedyRewritePatternApplier(
+                [
+                    GenerateDataflowGraph(),
+                    DfCallCleanup(),
+                    #DeallocCleanup()
+                ]
+            ),
+            apply_recursively=False,
+        )
+        df_graph_pass.rewrite_module(op)
 
 
         ##identify_transpose_nodes_pass = PatternRewriteWalker(
