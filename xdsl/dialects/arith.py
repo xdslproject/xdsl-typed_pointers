@@ -118,7 +118,6 @@ class Constant(IRDLOperation):
 
     @classmethod
     def parse(cls: type[Constant], parser: Parser) -> Constant:
-        print("HELLO FROM PARSE CONSTANT")
         attrs = parser.parse_optional_attr_dict()
 
         p0 = parser.pos
