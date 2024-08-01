@@ -650,16 +650,47 @@ class Printer:
             self.print(f'"{attr_tuple[0]}" = ')
             self.print_attribute(attr_tuple[1])
 
-    def print_op_attributes(self, attributes: dict[str, Attribute]) -> None:
-        if len(attributes) == 0:
+    #def print_op_attributes(self, attributes: dict[str, Attribute]) -> None:
+    #    if len(attributes) == 0:
+    #        return
+
+    #    self.print(" {")
+
+    #    attribute_list = list(attributes.items())
+    #    self.print_list(attribute_list, self._print_attr_string)
+
+    #    self.print("}")
+
+    def print_attr_dict(self, attr_dict: dict[str, Attribute]) -> None:
+        self.print_string("{")
+        self.print_list(attr_dict.items(), self._print_attr_string)
+        self.print_string("}")
+
+    def print_op_attributes(
+        self,
+        attributes: dict[str, Attribute],
+        *,
+        reserved_attr_names: Iterable[str] = (),
+        print_keyword: bool = False,
+    ) -> None:
+        if not attributes:
             return
 
-        self.print(" {")
+        if reserved_attr_names:
+            attributes = {
+                name: attr
+                for name, attr in attributes.items()
+                if name not in reserved_attr_names
+            }
 
-        attribute_list = list(attributes.items())
-        self.print_list(attribute_list, self._print_attr_string)
+        if not attributes:
+            return
 
-        self.print("}")
+        if print_keyword:
+            self.print(" attributes")
+
+        self.print(" ")
+        self.print_attr_dict(attributes)
 
     def print_op_attributes_with_keyword(
         self, attributes: dict[str, Attribute], reserved_attr_names: Iterable[str] = ()

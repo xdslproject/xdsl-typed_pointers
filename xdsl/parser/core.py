@@ -107,6 +107,20 @@ class Parser(AttrParser):
         self.forward_block_references = dict()
         self.forward_ssa_references = dict()
 
+    @dataclass
+    class UnresolvedArgument:
+        """
+        A block argument parsed from the assembly.
+        Arguments should be parsed by `parse_argument` or `parse_optional_argument`.
+        """
+
+        name: Span
+        """The name as displayed in the assembly."""
+
+        def resolve(self, type: Attribute) -> Parser.Argument:
+            return Parser.Argument(self.name, type)
+
+
     def parse_module(self, allow_implicit_module: bool = True) -> ModuleOp:
         module_op: Operation
 

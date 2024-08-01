@@ -12,6 +12,7 @@ from xdsl.dialects.arith import Arith
 from xdsl.dialects.builtin import Builtin, ModuleOp
 from xdsl.dialects.cf import Cf
 from xdsl.dialects.cmath import CMath
+from xdsl.dialects.experimental.dataflow import Dataflow
 from xdsl.dialects.experimental.dmp import DMP
 from xdsl.dialects.experimental.fir import FIR
 from xdsl.dialects.experimental.hls import HLS
@@ -53,6 +54,7 @@ from xdsl.transforms import (
 )
 from xdsl.transforms.experimental import (
     convert_stencil_to_ll_mlir,
+    dataflow_graph,
     hls_convert_stencil_to_ll_mlir,
     lower_hls,
     replace_incompatible_fpga,
@@ -103,6 +105,7 @@ def get_all_passes() -> list[type[ModulePass]]:
     return [
         canonicalize_dmp.CanonicalizeDmpPass,
         convert_stencil_to_ll_mlir.ConvertStencilToLLMLIRPass,
+        dataflow_graph.DataflowGraph,
         dead_code_elimination.DeadCodeElimination,
         DesymrefyPass,
         stencil_global_to_local.GlobalStencilToLocalStencil2DHorizontal,

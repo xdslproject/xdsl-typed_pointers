@@ -1225,3 +1225,16 @@ class AttrParser(BaseParser):
     def parse_affine_map(self) -> AffineMap:
         affp = affine_parser.AffineParser(self._parser_state)
         return affp.parse_affine_map()
+
+    def parse_optional_visibility_keyword(self) -> StringAttr | None:
+        """
+        Parses the visibility keyword of a symbol if present.
+        """
+        if self.parse_optional_keyword("public"):
+            return StringAttr("public")
+        elif self.parse_optional_keyword("nested"):
+            return StringAttr("nested")
+        elif self.parse_optional_keyword("private"):
+            return StringAttr("private")
+        else:
+            return None
