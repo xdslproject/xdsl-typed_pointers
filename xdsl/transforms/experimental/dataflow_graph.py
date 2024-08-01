@@ -104,7 +104,6 @@ class PromoteLoopToFuncs(RewritePattern):
                         all_operands.append(operand_list[0])
 
             input_types = []
-
             # Generate the input types from all the operands without repetition. Generate map of each operand 
             # to the index of the corresponding function argument
             node_name = f"node_{next(self.func_idx)}"
@@ -149,7 +148,7 @@ class PromoteLoopToFuncs(RewritePattern):
 
             rewriter.insert_op_before_matched_op(loop_func)
             op.detach()
-
+            del op.attributes["outer"]
             rewriter.insert_op_before(op, loop_region.blocks[0].first_op)
             for constant_copy in constant_copies:
                 rewriter.insert_op_before(constant_copy, loop_region.blocks[0].first_op)
@@ -487,15 +486,15 @@ class DataflowGraph(ModulePass):
         )
         prepare_top_pass.rewrite_module(op)
 
-        #promote_loop_to_func_pass = PatternRewriteWalker(
-        #    GreedyRewritePatternApplier(
-        #        [
-        #            PromoteLoopToFuncs(func_args_map),
-        #        ]
-        #    ),
-        #    apply_recursively=False,
-        #)
-        #promote_loop_to_func_pass.rewrite_module(op)
+        promote_loop_to_func_pass = PatternRewriteWalker(
+            GreedyRewritePatternApplier(
+                [
+                    PromoteLoopToFuncs(func_args_map),
+                ]
+            ),
+            apply_recursively=False,
+        )
+        promote_loop_to_func_pass.rewrite_module(op)
 
         #extract_func_pass = PatternRewriteWalker(
         #    GreedyRewritePatternApplier(
