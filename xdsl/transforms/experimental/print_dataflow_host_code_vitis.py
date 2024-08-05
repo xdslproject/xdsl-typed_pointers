@@ -73,7 +73,8 @@ class GenerateKernelsAndBuffersCode(RewritePattern):
         else:
             for n_pred,pred_node in enumerate(self.depends[node_name]):
                 self.set_kernel_arg[0] += f"err  = clSetKernelArg({node_name}_kernel, {n_pred}, sizeof(cl_mem), &out_{pred_node}_buf);\n\t"
-            self.set_kernel_arg[0] += f"err  = clSetKernelArg({node_name}_kernel, {n_pred+1}, sizeof(cl_long), &iters_{node_name});\n\t"
+            self.set_kernel_arg[0] += f"err  = clSetKernelArg(node_4_kernel, {n_pred+1}, sizeof(cl_mem), &out_{node_name});\n\t"
+            self.set_kernel_arg[0] += f"err  = clSetKernelArg({node_name}_kernel, {n_pred+2}, sizeof(cl_long), &iters_{node_name});\n\t"
 
         if node_name in self.depends:
             self.enqueue_kernel[0] += f"err = clEnqueueTask(commands, {node_name}_kernel, {len(self.depends[node_name])}, {node_name}_waitlist, &{node_name}_done);\n\t"
