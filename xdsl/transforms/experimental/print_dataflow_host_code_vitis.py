@@ -20,19 +20,20 @@ from xdsl.pattern_rewriter import (
 @dataclass
 class GenerateGraphFromConnected(RewritePattern):
     events : list[str]
-    events_waitlist : list[str]
+    events_waitlists: dict[str,str]
     depends : dict[str,str]
 
     @op_type_rewrite_pattern
     def match_and_rewrite(self, connected_op: dataflow.Connected, rewriter: PatternRewriter):
         node = connected_op.node
+        node_name = node.root_reference.data
 
         in_nodes_lst = connected_op.in_nodes.data
         out_nodes_lst = connected_op.out_nodes.data
 
         if in_nodes_lst:
             events_in_waitlist = ",".join([f"{in_node_symbol.root_reference.data}_done" for in_node_symbol in in_nodes_lst])
-            self.events_waitlist[0] += f"cl_event {node.root_reference.data}_waitlist[] = {{{events_in_waitlist}}};\n\t"
+            self.events_waitlists[node_name] = f"cl_event {node.root_reference.data}_waitlist[] = {{{events_in_waitlist}}};\n\t"
 
             node_name = node.root_reference.data
             self.depends[node_name] = []
@@ -45,6 +46,7 @@ class GenerateGraphFromConnected(RewritePattern):
 @dataclass
 class GenerateKernelsAndBuffersCode(RewritePattern):
     depends : dict[str,str]
+    events_waitlists : dict[str,str]
     host_arrays: list[str]
     init_host_arrays: list[str]
     iter_vars: list[str]
@@ -73,16 +75,17 @@ class GenerateKernelsAndBuffersCode(RewritePattern):
         else:
             for n_pred,pred_node in enumerate(self.depends[node_name]):
                 self.set_kernel_arg[0] += f"err  = clSetKernelArg({node_name}_kernel, {n_pred}, sizeof(cl_mem), &out_{pred_node}_buf);\n\t"
-            self.set_kernel_arg[0] += f"err  = clSetKernelArg(node_4_kernel, {n_pred+1}, sizeof(cl_mem), &out_{node_name});\n\t"
+            self.set_kernel_arg[0] += f"err  = clSetKernelArg({node_name}_kernel, {n_pred+1}, sizeof(cl_mem), &out_{node_name});\n\t"
             self.set_kernel_arg[0] += f"err  = clSetKernelArg({node_name}_kernel, {n_pred+2}, sizeof(cl_long), &iters_{node_name});\n\t"
 
         if node_name in self.depends:
+            self.enqueue_kernel[0] += self.events_waitlists[node_name]
             self.enqueue_kernel[0] += f"err = clEnqueueTask(commands, {node_name}_kernel, {len(self.depends[node_name])}, {node_name}_waitlist, &{node_name}_done);\n\t"
         else:
             self.enqueue_kernel[0] += f"err = clEnqueueTask(commands, {node_name}_kernel, 0, NULL, &{node_name}_done);\n\t"
 
 
-def print_boilerplate(host_arrays, init_host_arrays, iter_vars, create_kernel, create_buffer, set_kernel_arg, events, events_waitlist, enqueue_kernel):
+def print_boilerplate(host_arrays, init_host_arrays, iter_vars, create_kernel, create_buffer, set_kernel_arg, events, enqueue_kernel):
     boilerplate = f"""#include <stdio.h>\n
     #include <stdlib.h>\n
     #include <CL/cl.h>\n
@@ -163,8 +166,6 @@ def print_boilerplate(host_arrays, init_host_arrays, iter_vars, create_kernel, c
                       \n
         {events}
                       \n
-        {events_waitlist}\n
-                      \n
         {enqueue_kernel}\n
                       \n
         clFinish(commands);\n
@@ -186,7 +187,7 @@ class PrintHostCodeDataflowVitis(ModulePass):
 
     def apply(self, ctx: MLContext, op: builtin.ModuleOp) -> None:
         events = [""]
-        events_waitlists = [""]
+        events_waitlists = dict()
         depends = dict()
 
         host_arrays = [""]
@@ -212,11 +213,11 @@ class PrintHostCodeDataflowVitis(ModulePass):
         generate_kernels_buffer_code_pass = PatternRewriteWalker(
             GreedyRewritePatternApplier(
                 [
-                    GenerateKernelsAndBuffersCode(depends, host_arrays, init_host_arrays, iter_vars, create_kernel, create_buffer, set_kernel_arg, enqueue_kernel),
+                    GenerateKernelsAndBuffersCode(depends, events_waitlists, host_arrays, init_host_arrays, iter_vars, create_kernel, create_buffer, set_kernel_arg, enqueue_kernel),
                 ]
             ),
             apply_recursively=False,
         )
         generate_kernels_buffer_code_pass.rewrite_module(op)
 
-        print_boilerplate(host_arrays[0], init_host_arrays[0], iter_vars[0], create_kernel[0], create_buffer[0], set_kernel_arg[0], events[0], events_waitlists[0], enqueue_kernel[0])
+        print_boilerplate(host_arrays[0], init_host_arrays[0], iter_vars[0], create_kernel[0], create_buffer[0], set_kernel_arg[0], events[0], enqueue_kernel[0])
