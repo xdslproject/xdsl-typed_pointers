@@ -370,33 +370,34 @@ class Connected(IRDLOperation):
 
             node_direction = node_call.args_directions.data[operand_idx].data
 
-            for arc_list in arc_neighbours:
-                arc_neighbour = arc_list[0]
-                other_direction = arc_list[1]
+            if node_direction != "n/a":
+                for arc_list in arc_neighbours:
+                    arc_neighbour = arc_list[0]
+                    other_direction = arc_list[1]
 
-                # direction has the perspective of the neighbour node, hence it is reversed for 
-                # the current node.
-                is_arc = False
+                    # direction has the perspective of the neighbour node, hence it is reversed for 
+                    # the current node.
+                    is_arc = False
 
-                if other_direction == "in" and (node_direction == "out" or node_direction == "inout"):
-                    out_nodes.append(arc_neighbour.callee)
-                    is_arc = True
-                elif other_direction == "out" and (node_direction == "in" or node_direction == "inout"):
-                    in_nodes.append(arc_neighbour.callee)
-                    is_arc = True
-                elif node_direction == "inout":
-                    in_nodes.append(arc_neighbour.callee)
-                    out_nodes.append(arc_neighbour.callee)
-                    is_arc = True
+                    if other_direction == "in" and (node_direction == "out" or node_direction == "inout"):
+                        out_nodes.append(arc_neighbour.callee)
+                        is_arc = True
+                    elif other_direction == "out" and (node_direction == "in" or node_direction == "inout"):
+                        in_nodes.append(arc_neighbour.callee)
+                        is_arc = True
+                    elif node_direction == "inout":
+                        in_nodes.append(arc_neighbour.callee)
+                        out_nodes.append(arc_neighbour.callee)
+                        is_arc = True
 
-                if is_arc:
-                    if operand_idx not in edges:
-                        edges[operand_idx] = [ArrayAttr([arc_neighbour.callee, operand.type])]
-                    else:
-                        edges[operand_idx].append(ArrayAttr([arc_neighbour.callee, operand.type]))
+                    if is_arc:
+                        if operand_idx not in edges:
+                            edges[operand_idx] = [ArrayAttr([arc_neighbour.callee, operand.type])]
+                        else:
+                            edges[operand_idx].append(ArrayAttr([arc_neighbour.callee, operand.type]))
 
-                    # Sorting the edges to produce the same result in every run. This is necessary as the use field is a set
-                    edges[operand_idx] = sorted(edges[operand_idx], key=lambda x: x.data[0].root_reference.data)
+                        # Sorting the edges to produce the same result in every run. This is necessary as the use field is a set
+                        edges[operand_idx] = sorted(edges[operand_idx], key=lambda x: x.data[0].root_reference.data)
 
         # Same as above
         in_nodes = ArrayAttr(sorted(in_nodes, key=lambda x: x.root_reference.data))

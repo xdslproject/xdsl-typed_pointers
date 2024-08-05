@@ -103,6 +103,12 @@ class PromoteLoopToFuncs(RewritePattern):
                     if operand_list[1] != 'clone':
                         all_operands.append(operand_list[0])
 
+            # Add the operands of the loop too. This is relevant for loops with dynamic bounds
+            ops_operands_map[op] = []
+            for idx_loop_operand,loop_operand in enumerate(op.operands):
+                ops_operands_map[op].append([loop_operand,idx_loop_operand])
+                all_operands.append(loop_operand)
+
             input_types = []
             # Generate the input types from all the operands without repetition. Generate map of each operand 
             # to the index of the corresponding function argument
@@ -221,12 +227,16 @@ class PromoteFuncsToNodes(RewritePattern):
                         outputs.append(arg)
                         directions_list.append('out')
 
-                # If the arguments is used both to read and to write qualify it with 'inout'
-                direction = directions_list[0]
-                for other_direction in directions_list[1:]:
-                    if other_direction != direction:
-                        direction = 'inout'
-                        break
+                # If the argument is used both to read and to write qualify it with 'inout'
+                #print("DIRECTIONS LIST: ", directions_list)
+                if directions_list:
+                    direction = directions_list[0]
+                    for other_direction in directions_list[1:]:
+                        if other_direction != direction:
+                            direction = 'inout'
+                            break
+                else:
+                    direction = "n/a"
 
                 idx_in_out.append(direction)
 
@@ -255,6 +265,7 @@ class GenerateDataflowGraph(RewritePattern):
         for body_op in op.body.block.ops:
             if isinstance(body_op, dataflow.NodeCall):
                 node_call = body_op
+                #print("NODE CALL: ", node_call)
                 connected = dataflow.Connected(node_call)
 
                 rewriter.insert_op_after(connected, node_call)
@@ -539,44 +550,44 @@ class DataflowGraph(ModulePass):
         df_graph_pass.rewrite_module(op)
 
 
-        ##identify_transpose_nodes_pass = PatternRewriteWalker(
-        ##    GreedyRewritePatternApplier(
-        ##        [
-        ##            IdentifyTransposeAndInitNodes()
-        ##        ]
-        ##    ),
-        ##    apply_recursively=False,
-        ##)
-        ##identify_transpose_nodes_pass.rewrite_module(op)
+        #identify_transpose_nodes_pass = PatternRewriteWalker(
+        #    GreedyRewritePatternApplier(
+        #        [
+        #            IdentifyTransposeAndInitNodes()
+        #        ]
+        #    ),
+        #    apply_recursively=False,
+        #)
+        #identify_transpose_nodes_pass.rewrite_module(op)
 
-        ##transpose_pass = PatternRewriteWalker(
-        ##    GreedyRewritePatternApplier(
-        ##        [
-        ##            TransposePass()
-        ##        ]
-        ##    ),
-        ##    apply_recursively=False,
-        ##)
-        ###transpose_pass.rewrite_module(op)
+        #transpose_pass = PatternRewriteWalker(
+        #    GreedyRewritePatternApplier(
+        #        [
+        #            TransposePass()
+        #        ]
+        #    ),
+        #    apply_recursively=False,
+        #)
+        ##transpose_pass.rewrite_module(op)
 
-        ##integrateinitnodes_pass = PatternRewriteWalker(
-        ##    GreedyRewritePatternApplier(
-        ##        [
-        ##            IntegrateInitNodes()        
-        ##        ]
-        ##    ),
-        ##    apply_recursively=False,
-        ##)
-        ###integrateinitnodes_pass.rewrite_module(op)
+        #integrateinitnodes_pass = PatternRewriteWalker(
+        #    GreedyRewritePatternApplier(
+        #        [
+        #            IntegrateInitNodes()        
+        #        ]
+        #    ),
+        #    apply_recursively=False,
+        #)
+        ##integrateinitnodes_pass.rewrite_module(op)
 
-        ##partition_by_for_loop_pass = PatternRewriteWalker(
-        ##    GreedyRewritePatternApplier(
-        ##        [
-        ##            PartitionNodeByForLoop()
-        ##        ]
-        ##    ),
-        ##    apply_recursively=False,
-        ##)
-        ##partition_by_for_loop_pass.rewrite_module(op)
+        #partition_by_for_loop_pass = PatternRewriteWalker(
+        #    GreedyRewritePatternApplier(
+        #        [
+        #            PartitionNodeByForLoop()
+        #        ]
+        #    ),
+        #    apply_recursively=False,
+        #)
+        #partition_by_for_loop_pass.rewrite_module(op)
 
-        ##ConvertDataflowToFunc().apply(ctx, op)
+        #ConvertDataflowToFunc().apply(ctx, op)
