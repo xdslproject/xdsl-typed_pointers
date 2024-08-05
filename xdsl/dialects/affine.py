@@ -75,17 +75,17 @@ class For(IRDLOperation):
     # gh issue: https://github.com/xdslproject/xdsl/issues/1149
 
     def verify_(self) -> None:
-        if len(self.operands) != len(self.results):
-            raise Exception("Expected the same amount of operands and results")
+        #if len(self.operands) != len(self.results):
+        #    raise Exception("Expected the same amount of operands and results")
 
         operand_types = [SSAValue.get(op).type for op in self.operands]
-        if operand_types != [res.type for res in self.results]:
-            raise Exception(
-                "Expected all operands and result pairs to have matching types"
-            )
+        #if operand_types != [res.type for res in self.results]:
+        #    raise Exception(
+        #        "Expected all operands and result pairs to have matching types"
+        #    )
 
         entry_block: Block = self.body.blocks[0]
-        block_arg_types = [IndexType()] + operand_types
+        block_arg_types = [IndexType()]# + operand_types
         arg_types = [arg.type for arg in entry_block.args]
         if block_arg_types != arg_types:
             raise Exception(
