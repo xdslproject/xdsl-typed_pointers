@@ -75,7 +75,7 @@ class GenerateKernelsAndBuffersCode(RewritePattern):
         else:
             for n_pred,pred_node in enumerate(self.depends[node_name]):
                 self.set_kernel_arg[0] += f"err  = clSetKernelArg({node_name}_kernel, {n_pred}, sizeof(cl_mem), &out_{pred_node}_buf);\n\t"
-            self.set_kernel_arg[0] += f"err  = clSetKernelArg({node_name}_kernel, {n_pred+1}, sizeof(cl_mem), &out_{node_name});\n\t"
+            self.set_kernel_arg[0] += f"err  = clSetKernelArg({node_name}_kernel, {n_pred+1}, sizeof(cl_mem), &out_{node_name}_buf);\n\t"
             self.set_kernel_arg[0] += f"err  = clSetKernelArg({node_name}_kernel, {n_pred+2}, sizeof(cl_long), &iters_{node_name});\n\t"
 
         if node_name in self.depends:
