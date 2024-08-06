@@ -86,97 +86,102 @@ class GenerateKernelsAndBuffersCode(RewritePattern):
 
 
 def print_boilerplate(host_arrays, init_host_arrays, iter_vars, create_kernel, create_buffer, set_kernel_arg, events, enqueue_kernel):
-    boilerplate = f"""#include <stdio.h>\n
-    #include <stdlib.h>\n
-    #include <CL/cl.h>\n
-                      \n
-    #define N 100     \n
-                      \n
-    int main() {{      \n
-        cl_device_id device_id;\n
-        int err = clGetDeviceIDs(NULL, CL_DEVICE_TYPE_ACCELERATOR, 1, &device_id, NULL);\n
-        cl_context context = clCreateContext(0, 1, &device_id, NULL, NULL, &err);\n
-        if (!context) \n
-        {{             \n
-            printf(\"Error: Failed to create a compute context!\\n\");\n
-            return EXIT_FAILURE;\n
-        }}             \n
-                      \n
-        // Create a command commands\n
-        //            \n
-        cl_command_queue commands = clCreateCommandQueue(context, device_id, 0, &err);\n
-        if (!commands)\n
-        {{             \n
-            printf(\"Error: Failed to create a command commands!\\n\");\n
-            return EXIT_FAILURE;\n
-        }}             \n
-                      \n
-                      \n
-                      \n
-        FILE * f;     \n
-        f = fopen(\"all_nodes.xclbin\", \"r\");\n
-                      \n
-        fseek(f, 0, SEEK_END);\n
-        size_t file_size = ftell(f);\n
-        fseek(f, 0, SEEK_SET);\n
-                      \n
-        const unsigned char * binary = malloc(file_size * sizeof(const unsigned char));\n
-        fread(binary, file_size, 1, f);\n
-                      \n
-                      \n
-        cl_int binary_status;\n
-        cl_program program = clCreateProgramWithBinary(context, 1, &device_id, &file_size, &binary, &binary_status, &err);\n
-        if (!program) {{\n
-            printf(\"Error: Failed to create compute program!\\n\");\n
-        }}             \n
-                      \n
-                      \n
-        //// Build the program executable\n
-        //            \n
-        err = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);\n
-        if (err != CL_SUCCESS)\n
-        {{             \n
-            size_t len;\n
-            char buffer[2048];\n
-                      \n
-            printf(\"Error: Failed to build program executable!\\n\");\n
-            clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, sizeof(buffer), buffer, &len);\n
-            printf(\"%s\\n\", buffer);\n
-            exit(1);  \n
-        }}             \n
+    boilerplate = f"""
+    #include <stdio.h>
+    #include <stdlib.h>
+    #include <CL/cl.h>
+    #include "omp.h"
+                      
+    #define N 100     
+                      
+    int main() {{      
+        cl_device_id device_id;
+        int err = clGetDeviceIDs(NULL, CL_DEVICE_TYPE_ACCELERATOR, 1, &device_id, NULL);
+        cl_context context = clCreateContext(0, 1, &device_id, NULL, NULL, &err);
+        if (!context) 
+        {{             
+            printf(\"Error: Failed to create a compute context!\\n");
+            return EXIT_FAILURE;
+        }}             
+                      
+        // Create a command commands
+        //            
+        cl_command_queue commands = clCreateCommandQueue(context, device_id, 0, &err);
+        if (!commands)
+        {{             
+            printf(\"Error: Failed to create a command commands!\\n");
+            return EXIT_FAILURE;
+        }}             
+                      
+                      
+                      
+        FILE * f;     
+        f = fopen(\"all_nodes.xclbin\", \"r\");
+                      
+        fseek(f, 0, SEEK_END);
+        size_t file_size = ftell(f);
+        fseek(f, 0, SEEK_SET);
+                      
+        const unsigned char * binary = malloc(file_size * sizeof(const unsigned char));
+        fread(binary, file_size, 1, f);
+                      
+                      
+        cl_int binary_status;
+        cl_program program = clCreateProgramWithBinary(context, 1, &device_id, &file_size, &binary, &binary_status, &err);
+        if (!program) {{
+            printf(\"Error: Failed to create compute program!\\n");
+        }}             
+                      
+                      
+        //// Build the program executable
+        //            
+        err = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
+        if (err != CL_SUCCESS)
+        {{             
+            size_t len;
+            char buffer[2048];
+                      
+            printf(\"Error: Failed to build program executable!\\n");
+            clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, sizeof(buffer), buffer, &len);
+            printf(\"%s\\n", buffer);
+            exit(1);  
+        }}             
         {iter_vars}
-                      \n
-        float * in = (float *)malloc(N * sizeof(float));\n
-        float * out = (float *)malloc(N * sizeof(float));\n
+                      
+        float * in = (float *)malloc(N * sizeof(float));
+        float * out = (float *)malloc(N * sizeof(float));
         {host_arrays}
-                      \n
-        for(int i = 0; i < N; i++) {{\n
-            in[i] = i+1;\n
-            out[i] = 0;\n
-        }}             \n
+                      
+        for(int i = 0; i < N; i++) {{
+            in[i] = i+1;
+            out[i] = 0;
+        }}             
         {init_host_arrays}
-                      \n
+                      
         {create_kernel}
-                      \n
-        cl_mem in_buf = clCreateBuffer(context,  CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, N * sizeof(cl_float), in, NULL);\n\t
-        cl_mem out_buf = clCreateBuffer(context,  CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, N * sizeof(cl_float), out, NULL);\n\t
+                      
+        cl_mem in_buf = clCreateBuffer(context,  CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, N * sizeof(cl_float), in, NULL);\t
+        cl_mem out_buf = clCreateBuffer(context,  CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, N * sizeof(cl_float), out, NULL);\t
         {create_buffer}
-                      \n
+                      
         {set_kernel_arg}
-                      \n
+                      
         {events}
-                      \n
-        {enqueue_kernel}\n
-                      \n
-        clFinish(commands);\n
-                      \n
-        err = clEnqueueReadBuffer( commands, out_buf, CL_TRUE, 0, N * sizeof(float), out, 0, NULL, NULL );      \n
-                      \n
-        for(int i = 0; i < N; i++) {{\n
-            printf(\"out[%d] = %f\\n\", i, out[i]);\n
-            out[i] = 0;\n
-        }}             \n
-    }}                 \n"""
+                      
+        double start = omp_get_wtime();
+        {enqueue_kernel}
+                      
+        clFinish(commands);
+        double exec_time = omp_get_wtime() - start;
+        printf("Execution time: %lf\\n", exec_time); 
+                      
+        err = clEnqueueReadBuffer( commands, out_buf, CL_TRUE, 0, N * sizeof(float), out, 0, NULL, NULL );      
+                      
+        for(int i = 0; i < N; i++) {{
+            printf(\"out[%d] = %f\\n", i, out[i]);
+            out[i] = 0;
+        }}             
+    }}                 """
     print(boilerplate)
 
 
