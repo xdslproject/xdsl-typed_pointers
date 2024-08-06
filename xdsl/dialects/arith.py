@@ -191,7 +191,6 @@ class BinaryOperationWithFastMath(Generic[_T], BinaryOperation[_T]):
 
     @classmethod
     def parse(cls, parser: Parser):
-        print("------> PARSING FASTMATH OPERATION")
         lhs = parser.parse_unresolved_operand()
         parser.parse_punctuation(",")
         rhs = parser.parse_unresolved_operand()
