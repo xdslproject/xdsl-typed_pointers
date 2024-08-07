@@ -67,6 +67,8 @@ class NodeCallToFuncCall(RewritePattern):
 
         rewriter.replace_matched_op(node_call)
 
+CACHE_SIZE = 100
+
 @dataclass
 class CacheNodeInputs(RewritePattern):
     # Add a cache for the inputs and another for the outputs. For now the size fixed at size 100, but this should be adjusted 
@@ -78,8 +80,8 @@ class CacheNodeInputs(RewritePattern):
         store_op = [node_func_op for node_func_op in node_func.walk() if isinstance(node_func_op, affine.Store)]
         if load_op:
             for load_op_external, store_op_external in reversed(list(zip(load_op, store_op))):
-                cache_load = memref.Alloca.get(builtin.Float32Type(), None, [100], None)
-                cache_store = memref.Alloca.get(builtin.Float32Type(), None, [100], None)
+                cache_load = memref.Alloca.get(builtin.Float32Type(), None, [CACHE_SIZE], None)
+                cache_store = memref.Alloca.get(builtin.Float32Type(), None, [CACHE_SIZE], None)
                 rewriter.insert_op_at_start(cache_load, node_func.body.block)
                 rewriter.insert_op_after(cache_store, cache_load)
 
@@ -93,7 +95,7 @@ class CacheNodeInputs(RewritePattern):
 
                 load_op_external.operands[0] = cache_load.memref
 
-                cache_load_for = affine.For.from_region([], [], 0, 100, cache_load_for_region)
+                cache_load_for = affine.For.from_region([], [], 0, CACHE_SIZE, cache_load_for_region)
                 rewriter.insert_op_after(cache_load_for, cache_load)
 
 
@@ -107,7 +109,7 @@ class CacheNodeInputs(RewritePattern):
 
                 store_op_external.operands[1] = cache_store.memref
 
-                cache_store_for = affine.For.from_region([], [], 0, 100, cache_store_for_region)
+                cache_store_for = affine.For.from_region([], [], 0, CACHE_SIZE, cache_store_for_region)
                 rewriter.insert_op_before(cache_store_for, node_func.body.block.last_op)
 @dataclass
 class ConvertDataflowToFunc(ModulePass):
