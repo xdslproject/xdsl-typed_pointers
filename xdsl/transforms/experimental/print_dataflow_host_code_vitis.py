@@ -106,7 +106,7 @@ def print_boilerplate(host_arrays, init_host_arrays, iter_vars, create_kernel, c
                       
         // Create a command commands
         //            
-        cl_command_queue commands = clCreateCommandQueue(context, device_id, 0, &err);
+        cl_command_queue commands = clCreateCommandQueue(context, device_id, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, &err);
         if (!commands)
         {{             
             printf(\"Error: Failed to create a command commands!\\n");
