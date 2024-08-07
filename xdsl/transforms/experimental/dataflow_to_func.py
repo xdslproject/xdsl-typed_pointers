@@ -69,27 +69,46 @@ class NodeCallToFuncCall(RewritePattern):
 
 @dataclass
 class CacheNodeInputs(RewritePattern):
+    # Add a cache for the inputs and another for the outputs. For now the size fixed at size 100, but this should be adjusted 
+    # to the input size in the future. Fill the caches with the inputs and the results of the computational loop and replace 
+    # the operands of loads and stores with the corresponding caches.
     @op_type_rewrite_pattern
     def match_and_rewrite(self, node_func: func.FuncOp, rewriter: PatternRewriter):
         load_op = [node_func_op for node_func_op in node_func.walk() if isinstance(node_func_op, affine.Load)]
+        store_op = [node_func_op for node_func_op in node_func.walk() if isinstance(node_func_op, affine.Store)]
         if load_op:
-            for load_op_external in reversed(load_op):
-                cache = memref.Alloca.get(builtin.Float32Type(), None, [100], None)
-                rewriter.insert_op_at_start(cache, node_func.body.block)
+            for load_op_external, store_op_external in reversed(list(zip(load_op, store_op))):
+                cache_load = memref.Alloca.get(builtin.Float32Type(), None, [100], None)
+                cache_store = memref.Alloca.get(builtin.Float32Type(), None, [100], None)
+                rewriter.insert_op_at_start(cache_load, node_func.body.block)
+                rewriter.insert_op_after(cache_store, cache_load)
 
                 @Builder.region([builtin.IndexType()])
-                def cache_for_region(builder: Builder, args: tuple[BlockArgument, ...]):
-                    load_internal = affine.Load(load_op_external.memref, args[0])
-                    store_internal = affine.Store(load_internal.result, cache.memref, args[0])
-                    builder.insert(load_internal)
-                    builder.insert(store_internal)
+                def cache_load_for_region(builder: Builder, args: tuple[BlockArgument, ...]):
+                    load_internal_for_load = affine.Load(load_op_external.memref, args[0])
+                    store_internal_for_load = affine.Store(load_internal_for_load.result, cache_load.memref, args[0])
+                    builder.insert(load_internal_for_load)
+                    builder.insert(store_internal_for_load)
                     builder.insert(affine.Yield.get())
 
-                load_op_external.operands[0] = cache.memref
+                load_op_external.operands[0] = cache_load.memref
 
-                cache_for = affine.For.from_region([], [], 0, 100, cache_for_region)
-                rewriter.insert_op_after(cache_for, cache)
+                cache_load_for = affine.For.from_region([], [], 0, 100, cache_load_for_region)
+                rewriter.insert_op_after(cache_load_for, cache_load)
 
+
+                @Builder.region([builtin.IndexType()])
+                def cache_store_for_region(builder: Builder, args: tuple[BlockArgument, ...]):
+                    load_internal_for_store = affine.Load(cache_store.memref, args[0])
+                    store_internal_for_store = affine.Store(load_internal_for_store.result, store_op_external.memref, args[0])
+                    builder.insert(load_internal_for_store)
+                    builder.insert(store_internal_for_store)
+                    builder.insert(affine.Yield.get())
+
+                store_op_external.operands[1] = cache_store.memref
+
+                cache_store_for = affine.For.from_region([], [], 0, 100, cache_store_for_region)
+                rewriter.insert_op_before(cache_store_for, node_func.body.block.last_op)
 @dataclass
 class ConvertDataflowToFunc(ModulePass):
     name = "dataflow-to-func"
