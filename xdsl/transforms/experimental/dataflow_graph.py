@@ -479,6 +479,95 @@ class PartitionNodeByForLoop(RewritePattern):
                 if isinstance(loop_node_op, dataflow.Node):
                     rewriter.insert_op_at_end(dataflow.NodeEnd(), loop_node_op.body.block)
 
+from enum import Enum
+
+class NodeType(Enum):
+    IN = 0
+    OUT = 1
+
+@dataclass
+class InternalNode:
+    name: builtin.SymbolRefAttr
+    in_neighbours: list[int]
+    out_neighbours: list[int]
+
+
+@dataclass
+class GenerateInternalGraph(RewritePattern):
+    # This is a dictionary, since the nodes are referenced by symbol, so 
+    # this avoids lookups in the symbol table
+    graph: dict[str,InternalNode] 
+
+    @op_type_rewrite_pattern
+    def match_and_rewrite(self, top_op: dataflow.Top, rewriter: PatternRewriter):
+        connected_ops = [op for op in top_op.walk() if isinstance(op, dataflow.Connected)]
+
+        # 1. Create the graph with all the nodes. Still unconnected
+        for connected_op in connected_ops:
+            df_node_sym_name = connected_op.node.root_reference.data
+            self.graph[df_node_sym_name] = InternalNode(df_node_sym_name, [], [])
+
+        # 2. Connect the internal nodes according to the df.connected operation
+        for connected_op in connected_ops:
+            df_node_sym_name = connected_op.node.root_reference.data
+
+            df_in_neighbours = [in_node.root_reference.data for in_node in connected_op.in_nodes.data]
+            internal_in_neighbours = []
+            for df_in_neighbour in df_in_neighbours:
+                internal_in_neighbours.append(self.graph[df_in_neighbour])
+
+            df_out_neighbours = [out_node.root_reference.data for out_node in connected_op.out_nodes.data]
+            internal_out_neighbours = []
+            for df_out_neighbour in df_out_neighbours:
+                internal_out_neighbours.append(self.graph[df_out_neighbour])
+
+            self.graph[df_node_sym_name].in_neighbours = internal_in_neighbours
+            self.graph[df_node_sym_name].out_neighbours = internal_out_neighbours
+
+
+def edmonds_karp(graph):
+    # The Edmonds-Karp algorithm find the maximum flow in a flow network. When the capacities of all the edges are 
+    # 1 then the algorithm will find all the edge-disjoint paths. We are interested in the vertex-disjoint paths. The 
+    # vertex-disjoint problem can be transformed into the edge-disjoint by transforming each vertex into two vertices as
+    # follows: 
+    # u ====> u_in -> u_out, where the edge has capacity 1. This guarantees this edge (corresponding to vertex u) is 
+    # used only once in the algorithm.
+    # 
+    # The dataflow graph is transformed into a flow network with all the capacities equal to one and each vertex is transformed 
+    # as described to guarantee a single use.
+
+    flow_graph = set[InternalNode]
+    map_original_flow = dict()
+
+    for original_node_name in graph:
+        original_node = graph[original_node_name]
+
+        flow_node_in_name = f"{original_node_name}_in"
+        flow_node_in = InternalNode(node_in_name, [], [])
+        flow_node_in.type = NodeType.IN
+        flow_node_in.out_neighbours.append(flow_node_out)
+
+        flow_node_out_name = f"{original_node_name}_out"
+        flow_node_out = InternalNode(flow_node_out_name, [], [])
+        flow_node_in.type = NodeType.OUT
+        flow_node_out.in_neighbours.append(flow_node_in)
+
+        flow_graph.add(flow_node_in)
+        flow_graph.add(flow_node_in)
+
+        map_original_flow[original_node_name] = (flow_node_in, flow_node_out)
+
+    for flow_node in flow_graph:
+        if flow_node.type == NodeType.IN:
+            original_node = graph[flow_node.original_node_name]
+
+            for original_in_neighbour in graph[original_node].in_neighbours:
+                flow_neighbour_out = map_original_flow[original_in_neighbour][1]
+                flow_node.in_neighbours.append(flow_neighbour_out)
+
+            for original_out_neighbour in graph[original_node].out_neighbours:
+                flow_neighbour_in = map_original_flow[original_out_neighbour][1]
+                flow_node.in_neighbours.append(flow_neighbour_in)
 
 
 @dataclass
@@ -591,3 +680,21 @@ class DataflowGraph(ModulePass):
         #partition_by_for_loop_pass.rewrite_module(op)
 
         #ConvertDataflowToFunc().apply(ctx, op)
+
+        graph = dict()
+
+        generate_internal_graph_pass = PatternRewriteWalker(
+            GreedyRewritePatternApplier(
+                [
+                    GenerateInternalGraph(graph)
+                ]
+            ),
+            apply_recursively=False,
+        )
+        generate_internal_graph_pass.rewrite_module(op)
+
+        # Graph check
+        for node in graph:
+            in_neighbours = ",".join([in_neighbour.name for in_neighbour in  graph[node].in_neighbours])
+            out_neighbours = ",".join([out_neighbour.name for out_neighbour in graph[node].out_neighbours])
+            print(f"NODE {graph[node].name}. IN: {in_neighbours}; OUT: {out_neighbours}")
