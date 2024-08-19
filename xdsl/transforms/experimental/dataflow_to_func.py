@@ -31,7 +31,7 @@ class NodeToFunc(RewritePattern):
         func_region = rewriter.move_region_contents_to_new_regions(op.body)
         rewriter.replace_op(func_region.block.last_op, func.Return())
 
-        node_func = func.FuncOp.from_region(op.sym_name, node_inputs, [], func_region)
+        node_func = func.FuncOp.from_region(op.sym_name.data, node_inputs, [], func_region)
 
         node_func.attributes["node_func"] = builtin.i1
 
@@ -42,7 +42,6 @@ class ConnectedToNodeCalls(RewritePattern):
     @op_type_rewrite_pattern
     def match_and_rewrite(self, op: dataflow.Connected, rewriter: PatternRewriter):
         node_call = func.Call(op.node, op.arguments, [])
-        #print("NODE CALL: ", node_call)
 
         rewriter.replace_matched_op(node_call)
 
@@ -55,7 +54,7 @@ class TopToFunc(RewritePattern):
         func_region = rewriter.move_region_contents_to_new_regions(op.body)
         rewriter.replace_op(func_region.block.last_op, func.Return())
 
-        top_func = func.FuncOp.from_region(op.sym_name, node_inputs, [], func_region)
+        top_func = func.FuncOp.from_region(op.sym_name.data, node_inputs, [], func_region)
 
         rewriter.replace_matched_op(top_func)
 
@@ -137,4 +136,4 @@ class ConvertDataflowToFunc(ModulePass):
             ),
             apply_recursively=False,
         )
-        cache_pass.rewrite_module(op)
+        #cache_pass.rewrite_module(op)

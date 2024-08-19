@@ -24,6 +24,8 @@ from xdsl.pattern_rewriter import (
 
 from xdsl.builder import Builder
 from collections import deque
+import io
+import pickle
 
 @dataclass
 class PrepareTop(RewritePattern):
@@ -645,10 +647,17 @@ def edmonds_karp(graph):
         new_path = list(reversed(new_path)) + [sink]
         parallel_paths.append(new_path)
 
-    for path in parallel_paths:
-        print("***** PARALLEL PATH")
-        for node in path:
-            print("NODE: ", node.name)
+    #for path in parallel_paths:
+    #    print("***** PARALLEL PATH")
+    #    for node in path:
+    #        print("NODE: ", node.name)
+    graph_file = open("graph.out", "wb")
+    flow_file = open("flow.out", "wb")
+    parallel_paths_file = open("paths.out", "wb")
+
+    pickle.dump(graph, graph_file)
+    pickle.dump(flow_graph, flow_file)
+    pickle.dump(parallel_paths, parallel_paths_file)
     
     return max_flow
 
