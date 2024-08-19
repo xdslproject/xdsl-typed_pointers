@@ -23,6 +23,7 @@ from xdsl.pattern_rewriter import (
 )
 
 from xdsl.builder import Builder
+from collections import deque
 
 @dataclass
 class PrepareTop(RewritePattern):
@@ -556,46 +557,100 @@ def edmonds_karp(graph):
     # The dataflow graph is transformed into a flow network with all the capacities equal to one and each vertex is transformed 
     # as described to guarantee a single use.
 
-    #flow_graph = set[InternalNode]()
+    # CONSTRUCTION OF THE FLOW NETWORK
     flow_graph = set[InternalNode]()
     map_original_flow = dict()
+    id_iterator = iter(range(1000))
+    n_nodes = len(graph) * 2
 
     for original_node_name in graph:
-        original_node = graph[original_node_name]
-
         flow_node_in_name = f"{original_node_name}_in"
         flow_node_in = InternalNode(flow_node_in_name, [], [], NodeType.IN)
-        flow_node_in.id += 100
-        flow_node_in.out_neighbours.append(flow_node_in)
+        flow_node_in.id = next(id_iterator)
 
         flow_node_out_name = f"{original_node_name}_out"
         flow_node_out = InternalNode(flow_node_out_name, [], [], NodeType.OUT)
-        flow_node_out.id += 200
-        flow_node_out.in_neighbours.append(flow_node_out)
+        flow_node_out.id = next(id_iterator)
 
-        print("FLOW NODE IN: ", flow_node_in)
+        flow_node_in.out_neighbours.append(flow_node_out)
+        flow_node_out.in_neighbours.append(flow_node_in)
+
         flow_graph.add(flow_node_in)
         flow_graph.add(flow_node_out)
 
         map_original_flow[original_node_name] = (flow_node_in, flow_node_out)
 
-    print("FLOW GRAPH: ", flow_graph)
     for flow_node in flow_graph:
-        print("FLOW NODE: ", flow_node)
         if flow_node.type == NodeType.IN:
-            original_node = graph[flow_node.get_original_node_name()]
             original_node_name = flow_node.get_original_node_name()
 
             for original_in_neighbour in graph[original_node_name].in_neighbours:
                 flow_neighbour_out = map_original_flow[original_in_neighbour.name.root_reference.data][1]
                 flow_node.in_neighbours.append(flow_neighbour_out)
-                print("---> FLOW NEIGBHOUR IN: ", flow_neighbour_out)
 
+        elif flow_node.type == NodeType.OUT:
             for original_out_neighbour in graph[original_node_name].out_neighbours:
                 flow_neighbour_in = map_original_flow[original_out_neighbour.name.root_reference.data][0]
                 flow_node.out_neighbours.append(flow_neighbour_in)
-                print("---> FLOW NEIGBHOUR OUT: ", flow_neighbour_in)
+        
+    flow_root = map_original_flow["node_0"]
+    flow_sink = map_original_flow["node_4"]
 
+    def bfs(capacity : list[tuple[InternalNode, InternalNode]], source : InternalNode, sink, parent):
+        visited = set()
+        queue = deque([source])
+        visited.add(source)
+        while queue:
+            u = queue.popleft()
+
+            for v in u.out_neighbours:
+                if v not in visited and capacity[u.id][v.id] > 0:
+                    queue.append(v)
+                    visited.add(v)
+                    parent[v] = u
+                    if v == sink:
+                        return True
+        return False
+
+    capacity = [[1]*n_nodes for _ in range(n_nodes)]
+
+    # EDMONDS-KARP ALGORITHM
+    parallel_paths = []
+    parent = dict()
+    max_flow = 0
+
+    source = flow_root[1]
+    sink = flow_sink[0]
+
+    while bfs(capacity, source, sink, parent):
+        new_path = []
+
+        path_flow = float('Inf')
+        s = sink
+
+        while s != source:
+            path_flow = min(path_flow, capacity[parent[s].id][s.id])
+            s = parent[s]
+            new_path.append(s)
+
+        v = sink
+        while v != source:
+            u = parent[v]
+            capacity[u.id][v.id] -= path_flow
+            capacity[v.id][u.id] += path_flow
+            v = parent[v]
+        
+        max_flow += path_flow
+
+        new_path = list(reversed(new_path)) + [sink]
+        parallel_paths.append(new_path)
+
+    for path in parallel_paths:
+        print("***** PARALLEL PATH")
+        for node in path:
+            print("NODE: ", node.name)
+    
+    return max_flow
 
 @dataclass
 class DataflowGraph(ModulePass):
@@ -720,10 +775,10 @@ class DataflowGraph(ModulePass):
         )
         generate_internal_graph_pass.rewrite_module(op)
 
-        # Graph check
-        for node in graph:
-            #print("IN NEIGHBOURS: ", graph[node].in_neighbours)
-            #print("OUT NEIGHBOURS: ", graph[node].out_neighbours)
-            in_neighbours = ",".join([in_neighbour.name.root_reference.data for in_neighbour in  graph[node].in_neighbours])
-            out_neighbours = ",".join([out_neighbour.name.root_reference.data for out_neighbour in graph[node].out_neighbours])
-            print(f"NODE {graph[node].name}. IN: {in_neighbours}; OUT: {out_neighbours}")
+        ## Graph check
+        #for node in graph:
+        #    #print("IN NEIGHBOURS: ", graph[node].in_neighbours)
+        #    #print("OUT NEIGHBOURS: ", graph[node].out_neighbours)
+        #    in_neighbours = ",".join([in_neighbour.name.root_reference.data for in_neighbour in  graph[node].in_neighbours])
+        #    out_neighbours = ",".join([out_neighbour.name.root_reference.data for out_neighbour in graph[node].out_neighbours])
+        #    print(f"NODE {graph[node].name}. IN: {in_neighbours}; OUT: {out_neighbours}")
