@@ -487,9 +487,27 @@ class NodeType(Enum):
 
 @dataclass
 class InternalNode:
+    id: int
     name: builtin.SymbolRefAttr
-    in_neighbours: list[int]
-    out_neighbours: list[int]
+    in_neighbours: list
+    out_neighbours: list
+    type: NodeType | None
+
+    def __init__(self, name: str, in_neighbours, out_neighbours, type=None):
+        self.id = int(name.split('_')[1])
+        self.name = builtin.SymbolRefAttr(name)
+        self.in_neighbours = in_neighbours
+        self.out_neighbours = out_neighbours
+        self.type = type
+    
+    def __hash__(self):
+        return self.id
+    
+    def get_original_node_name(self):
+        if self.type == NodeType.IN:
+            return self.name.root_reference.data.split("_in")[0]
+        elif self.type == NodeType.OUT:
+            return self.name.root_reference.data.split("_out")[0]
 
 
 @dataclass
@@ -524,6 +542,8 @@ class GenerateInternalGraph(RewritePattern):
             self.graph[df_node_sym_name].in_neighbours = internal_in_neighbours
             self.graph[df_node_sym_name].out_neighbours = internal_out_neighbours
 
+        edmonds_karp(self.graph)
+
 
 def edmonds_karp(graph):
     # The Edmonds-Karp algorithm find the maximum flow in a flow network. When the capacities of all the edges are 
@@ -536,38 +556,45 @@ def edmonds_karp(graph):
     # The dataflow graph is transformed into a flow network with all the capacities equal to one and each vertex is transformed 
     # as described to guarantee a single use.
 
-    flow_graph = set[InternalNode]
+    #flow_graph = set[InternalNode]()
+    flow_graph = set[InternalNode]()
     map_original_flow = dict()
 
     for original_node_name in graph:
         original_node = graph[original_node_name]
 
         flow_node_in_name = f"{original_node_name}_in"
-        flow_node_in = InternalNode(node_in_name, [], [])
-        flow_node_in.type = NodeType.IN
-        flow_node_in.out_neighbours.append(flow_node_out)
+        flow_node_in = InternalNode(flow_node_in_name, [], [], NodeType.IN)
+        flow_node_in.id += 100
+        flow_node_in.out_neighbours.append(flow_node_in)
 
         flow_node_out_name = f"{original_node_name}_out"
-        flow_node_out = InternalNode(flow_node_out_name, [], [])
-        flow_node_in.type = NodeType.OUT
-        flow_node_out.in_neighbours.append(flow_node_in)
+        flow_node_out = InternalNode(flow_node_out_name, [], [], NodeType.OUT)
+        flow_node_out.id += 200
+        flow_node_out.in_neighbours.append(flow_node_out)
 
+        print("FLOW NODE IN: ", flow_node_in)
         flow_graph.add(flow_node_in)
-        flow_graph.add(flow_node_in)
+        flow_graph.add(flow_node_out)
 
         map_original_flow[original_node_name] = (flow_node_in, flow_node_out)
 
+    print("FLOW GRAPH: ", flow_graph)
     for flow_node in flow_graph:
+        print("FLOW NODE: ", flow_node)
         if flow_node.type == NodeType.IN:
-            original_node = graph[flow_node.original_node_name]
+            original_node = graph[flow_node.get_original_node_name()]
+            original_node_name = flow_node.get_original_node_name()
 
-            for original_in_neighbour in graph[original_node].in_neighbours:
-                flow_neighbour_out = map_original_flow[original_in_neighbour][1]
+            for original_in_neighbour in graph[original_node_name].in_neighbours:
+                flow_neighbour_out = map_original_flow[original_in_neighbour.name.root_reference.data][1]
                 flow_node.in_neighbours.append(flow_neighbour_out)
+                print("---> FLOW NEIGBHOUR IN: ", flow_neighbour_out)
 
-            for original_out_neighbour in graph[original_node].out_neighbours:
-                flow_neighbour_in = map_original_flow[original_out_neighbour][1]
-                flow_node.in_neighbours.append(flow_neighbour_in)
+            for original_out_neighbour in graph[original_node_name].out_neighbours:
+                flow_neighbour_in = map_original_flow[original_out_neighbour.name.root_reference.data][0]
+                flow_node.out_neighbours.append(flow_neighbour_in)
+                print("---> FLOW NEIGBHOUR OUT: ", flow_neighbour_in)
 
 
 @dataclass
@@ -695,6 +722,8 @@ class DataflowGraph(ModulePass):
 
         # Graph check
         for node in graph:
-            in_neighbours = ",".join([in_neighbour.name for in_neighbour in  graph[node].in_neighbours])
-            out_neighbours = ",".join([out_neighbour.name for out_neighbour in graph[node].out_neighbours])
+            #print("IN NEIGHBOURS: ", graph[node].in_neighbours)
+            #print("OUT NEIGHBOURS: ", graph[node].out_neighbours)
+            in_neighbours = ",".join([in_neighbour.name.root_reference.data for in_neighbour in  graph[node].in_neighbours])
+            out_neighbours = ",".join([out_neighbour.name.root_reference.data for out_neighbour in graph[node].out_neighbours])
             print(f"NODE {graph[node].name}. IN: {in_neighbours}; OUT: {out_neighbours}")
