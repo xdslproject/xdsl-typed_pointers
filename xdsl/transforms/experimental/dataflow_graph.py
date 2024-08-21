@@ -231,7 +231,6 @@ class PromoteFuncsToNodes(RewritePattern):
                         directions_list.append('out')
 
                 # If the argument is used both to read and to write qualify it with 'inout'
-                #print("DIRECTIONS LIST: ", directions_list)
                 if directions_list:
                     direction = directions_list[0]
                     for other_direction in directions_list[1:]:
@@ -268,7 +267,6 @@ class GenerateDataflowGraph(RewritePattern):
         for body_op in op.body.block.ops:
             if isinstance(body_op, dataflow.NodeCall):
                 node_call = body_op
-                #print("NODE CALL: ", node_call)
                 connected = dataflow.Connected(node_call)
 
                 rewriter.insert_op_after(connected, node_call)
@@ -461,7 +459,9 @@ class PartitionNodeByForLoop(RewritePattern):
 
                 loop_inner_ops_arg0_uses = []
                 for inner_use in node_inout.uses:
-                    loop_inner_ops_arg0_uses.append(inner_use)
+                    if loop_node.is_ancestor(inner_use.operation):
+                        loop_inner_ops_arg0_uses.append(inner_use)
+
 
                 for arg0_use in loop_inner_ops_arg0_uses:
                     arg0_use.operation.operands[arg0_use.index] = loop_node.body.block.args[0]
@@ -596,7 +596,7 @@ def edmonds_karp(graph):
                 flow_node.out_neighbours.append(flow_neighbour_in)
         
     flow_root = map_original_flow["node_0"]
-    flow_sink = map_original_flow["node_4"]
+    flow_sink = map_original_flow[f"node_{len(graph)-1}"]
 
     def bfs(capacity : list[tuple[InternalNode, InternalNode]], source : InternalNode, sink, parent):
         visited = set()
@@ -647,10 +647,6 @@ def edmonds_karp(graph):
         new_path = list(reversed(new_path)) + [sink]
         parallel_paths.append(new_path)
 
-    #for path in parallel_paths:
-    #    print("***** PARALLEL PATH")
-    #    for node in path:
-    #        print("NODE: ", node.name)
     graph_file = open("graph.out", "wb")
     flow_file = open("flow.out", "wb")
     parallel_paths_file = open("paths.out", "wb")
@@ -760,15 +756,15 @@ class DataflowGraph(ModulePass):
         #)
         ##integrateinitnodes_pass.rewrite_module(op)
 
-        #partition_by_for_loop_pass = PatternRewriteWalker(
-        #    GreedyRewritePatternApplier(
-        #        [
-        #            PartitionNodeByForLoop()
-        #        ]
-        #    ),
-        #    apply_recursively=False,
-        #)
-        #partition_by_for_loop_pass.rewrite_module(op)
+        partition_by_for_loop_pass = PatternRewriteWalker(
+            GreedyRewritePatternApplier(
+                [
+                    PartitionNodeByForLoop()
+                ]
+            ),
+            apply_recursively=False,
+        )
+        partition_by_for_loop_pass.rewrite_module(op)
 
         #ConvertDataflowToFunc().apply(ctx, op)
 

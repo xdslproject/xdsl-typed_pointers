@@ -413,8 +413,12 @@ class Connected(IRDLOperation):
 
 Dataflow = Dialect(
     [
+        Connected,
         Node,
-        NodeEnd
+        NodeCall,
+        NodeEnd,
+        Top,
+        TopEnd
     ],
     []
 )
