@@ -275,15 +275,27 @@ def chunk_node(top_level_node: dataflow.Node, rewriter: PatternRewriter):
         # Data partitioning
         n_chunks = len(chunk_calls)
         for chunk_idx,chunk_call in enumerate(chunk_calls):
+            node_inputs = []
+
             for idx,arg in enumerate(chunk_call.arguments):
                 if isinstance(arg.type, memref.MemRefType):
                     memref_dims = [dim.value.data for dim in arg.type.shape.data]
                     sizes = memref_dims
                     sizes[0] = int(sizes[0] / n_chunks)
 
-                    subview = memref.Subview.from_static_parameters(arg, arg.type, [chunk_idx * sizes[0],0,0,0], sizes, [0,0,0,0])
+                    subview = memref.Subview.from_static_parameters(arg, arg.type, [chunk_idx * sizes[0]], sizes, [1])
                     rewriter.insert_op_before(subview, calls[0])
                     chunk_call.operands[idx] = subview.result
+
+                    node_inputs.append(subview.result.type)
+                else:
+                    node_inputs.append(arg)
+
+            # Update the type of the partitioned arguments in the node
+            update_function_type = builtin.FunctionType.from_lists(node_inputs, [])
+            chunks[chunk_idx].function_type = update_function_type
+            for chunk_arg_idx,chunk_arg in enumerate(chunks[chunk_idx].body.block.args):
+                chunk_arg.type = update_function_type.inputs.data[chunk_arg_idx]
 
         for chunk in chunks:
             rewriter.insert_op_before(chunk, called_node)
