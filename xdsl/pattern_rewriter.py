@@ -105,8 +105,8 @@ class PatternRewriter:
 
     def insert_op_at_end(self, op: Operation | Sequence[Operation], block: Block):
         """Insert operations in a block contained in the matched operation."""
-        if not self._can_modify_block(block):
-            raise Exception("Cannot insert operations in block.")
+        #if not self._can_modify_block(block):
+        #    raise Exception("Cannot insert operations in block.")
         self.has_done_action = True
         op = [op] if isinstance(op, Operation) else op
         if len(op) == 0:
@@ -130,8 +130,8 @@ class PatternRewriter:
         if target_op.parent is None:
             raise Exception("Cannot insert operations before toplevel operation.")
         target_block = target_op.parent
-        if not self._can_modify_block(target_block):
-            raise Exception("Cannot insert operations in this block.")
+        #if not self._can_modify_block(target_block):
+        #    raise Exception("Cannot insert operations in this block.")
         self.has_done_action = True
         op = [op] if isinstance(op, Operation) else op
         if len(op) == 0:
@@ -172,11 +172,11 @@ class PatternRewriter:
         self.has_done_action = True
         if op == self.current_operation:
             return self.erase_matched_op(safe_erase)
-        if not self._can_modify_op(op):
-            raise Exception(
-                "PatternRewriter can only erase operations that are the matched operation"
-                ", or that are contained in the matched operation."
-            )
+        #if not self._can_modify_op(op):
+        #    raise Exception(
+        #        "PatternRewriter can only erase operations that are the matched operation"
+        #        ", or that are contained in the matched operation."
+        #    )
         Rewriter.erase_op(op, safe_erase=safe_erase)
 
     def replace_matched_op(
@@ -388,6 +388,26 @@ class PatternRewriter:
         if not self.has_erased_matched_operation:
             yield self.current_operation
         yield from reversed(self.added_operations_before)
+
+    def inline_region_before(self, region: Region, target: Block) -> None:
+        """Move the region blocks to an existing region."""
+        self.has_done_action = True
+        Rewriter.inline_region_before(region, target)
+
+    def inline_region_after(self, region: Region, target: Block) -> None:
+        """Move the region blocks to an existing region."""
+        self.has_done_action = True
+        Rewriter.inline_region_after(region, target)
+
+    def inline_region_at_start(self, region: Region, target: Region) -> None:
+        """Move the region blocks to an existing region."""
+        self.has_done_action = True
+        Rewriter.inline_region_at_start(region, target)
+
+    def inline_region_at_end(self, region: Region, target: Region) -> None:
+        """Move the region blocks to an existing region."""
+        self.has_done_action = True
+        Rewriter.inline_region_at_end(region, target)
 
 
 class RewritePattern(ABC):

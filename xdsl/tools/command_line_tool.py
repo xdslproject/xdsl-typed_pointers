@@ -17,6 +17,7 @@ from xdsl.dialects.experimental.dmp import DMP
 from xdsl.dialects.experimental.fir import FIR
 from xdsl.dialects.experimental.hls import HLS
 from xdsl.dialects.experimental.math import Math
+from xdsl.dialects.experimental.dataflow import Dataflow
 from xdsl.dialects.func import Func
 from xdsl.dialects.gpu import GPU
 from xdsl.dialects.irdl.irdl import IRDL
@@ -55,6 +56,7 @@ from xdsl.transforms import (
 from xdsl.transforms.experimental import (
     convert_stencil_to_ll_mlir,
     dataflow_graph,
+    dataflow_graph2,
     dataflow_to_func,
     hls_convert_stencil_to_ll_mlir,
     lower_hls,
@@ -76,6 +78,7 @@ def get_all_dialects() -> list[Dialect]:
         Builtin,
         Cf,
         CMath,
+        Dataflow,
         DMP,
         FIR,
         Func,
@@ -108,6 +111,7 @@ def get_all_passes() -> list[type[ModulePass]]:
         canonicalize_dmp.CanonicalizeDmpPass,
         convert_stencil_to_ll_mlir.ConvertStencilToLLMLIRPass,
         dataflow_graph.DataflowGraph,
+        dataflow_graph2.DataflowGraph2,
         dataflow_to_func.ConvertDataflowToFunc,
         dead_code_elimination.DeadCodeElimination,
         DesymrefyPass,
