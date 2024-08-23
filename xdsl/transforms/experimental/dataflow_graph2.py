@@ -155,7 +155,7 @@ class HierarchyTagFunctionsWithLatencies(RewritePattern):
             root.attributes['latency'] = builtin.FloatAttr(root_latency, builtin.Float32Type())
 
 # TODO: this will be a parameter of the DSE
-CHUNK_FACTOR = 400
+CHUNK_FACTOR = 4
 
 @dataclass
 class PartitionTopLevelNodes(RewritePattern):
@@ -245,7 +245,8 @@ def chunk_node(top_level_node: dataflow.Node, rewriter: PatternRewriter):
         for_called_node = for_called_node[0]
 
         iters = get_loop_iters(for_called_node)
-        n_chunks = int(iters / CHUNK_FACTOR + math.ceil(iters % CHUNK_FACTOR/CHUNK_FACTOR))
+        #n_chunks = int(iters / CHUNK_FACTOR + math.ceil(iters % CHUNK_FACTOR/CHUNK_FACTOR))
+        n_chunks = CHUNK_FACTOR
 
         chunks = []
         chunk_calls = []
@@ -265,8 +266,9 @@ def chunk_node(top_level_node: dataflow.Node, rewriter: PatternRewriter):
 
             # TODO: adapt this for the case where the number of iterations doesn't divide evenly by the CHUNK_FACTOR 
             chunk_lb = chunk_for_loop.lb.owner.value.value.data
-            chunk_lb += int(i * (it_range / CHUNK_FACTOR))
-            chunk_ub = int(chunk_lb + (i+1) * (it_range / CHUNK_FACTOR))
+            chunk_size = it_range / CHUNK_FACTOR
+            chunk_lb += int(i * chunk_size)
+            chunk_ub = int(chunk_lb + chunk_size)
 
             chunk_for_loop.lb.owner.value = builtin.IntegerAttr.from_index_int_value(chunk_lb)
             chunk_for_loop.ub.owner.value = builtin.IntegerAttr.from_index_int_value(chunk_ub)
