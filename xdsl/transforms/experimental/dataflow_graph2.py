@@ -155,7 +155,7 @@ class HierarchyTagFunctionsWithLatencies(RewritePattern):
             root.attributes['latency'] = builtin.FloatAttr(root_latency, builtin.Float32Type())
 
 # TODO: this will be a parameter of the DSE
-CHUNK_FACTOR = 4
+CHUNK_FACTOR = 2
 
 @dataclass
 class PartitionTopLevelNodes(RewritePattern):
@@ -230,87 +230,107 @@ class PartitionTopLevelNodes(RewritePattern):
                     new_top_level_node_latency = top_level_node.attributes['latency'].value.data / CHUNK_FACTOR
                     top_level_node.attributes['latency'] = builtin.FloatAttr(new_top_level_node_latency, builtin.Float32Type())
 
-def chunk_node(top_level_node: dataflow.Node, rewriter: PatternRewriter):
+base_chunk_name_counter = dict()
+
+def chunk_node(top_level_node: dataflow.Node, rewriter: PatternRewriter, operations_to_remove: set[Operation]):
     ## Chunk the loop node by a fixed chunk factor (this will be a parameter of the DSE in the future)
+    ## Nodes are deleted after partitioning so only the split versions remain in the IR. We keep track of them in the
+    ## operations_to_remove set.
+
     #for top_level_node in top_level_nodes:
     assert isinstance(top_level_node, func.FuncOp)
-
+    print("===== TOP LEVEL NODE: ", top_level_node.sym_name)
     calls = [top_level_op for top_level_op in top_level_node.walk() if isinstance(top_level_op, func.Call)]
-    called_node = builtin.SymbolTable.lookup_symbol(top_level_node, calls[0].callee.root_reference)
+    print("TOP LEVEL NODE: ", top_level_node.sym_name, "; N. CALLS: ", len(calls))
 
-    # The chunking happens effectively in the for loop of the called node. This requires recalculating the bounds for each
-    # clone and TODO: the view of the data for each new loop node
-    for_called_node = [called_node_op for called_node_op in called_node.walk() if isinstance(called_node_op, scf.For)]
-    if for_called_node:
-        for_called_node = for_called_node[0]
+    # Use to remove these nodes once they have already been split
+    for call in calls:
+        called_node = builtin.SymbolTable.lookup_symbol(top_level_node, call.callee.root_reference)
+        operations_to_remove.add(called_node)
 
-        iters = get_loop_iters(for_called_node)
-        #n_chunks = int(iters / CHUNK_FACTOR + math.ceil(iters % CHUNK_FACTOR/CHUNK_FACTOR))
-        n_chunks = CHUNK_FACTOR
+        # The chunking happens effectively in the for loop of the called node. This requires recalculating the bounds for each
+        # clone and TODO: the view of the data for each new loop node
+        for_called_node = [called_node_op for called_node_op in called_node.walk() if isinstance(called_node_op, scf.For)]
+        print("TOP LEVEL NODE: ", top_level_node.sym_name, "; N. FOR CALLED NODES: ", len(for_called_node))
+        if for_called_node:
+            for_called_node = for_called_node[0]
 
-        chunks = []
-        chunk_calls = []
-        for i in range(n_chunks):
-            chunks.append(called_node.clone())
-            chunk_name = chunks[i].sym_name.data + f"_{str(i)}"
-            chunks[i].sym_name = builtin.StringAttr(chunk_name)
-            chunk_calls.append(func.Call(chunk_name, calls[0].arguments, calls[0].res))
+            iters = get_loop_iters(for_called_node)
+            #n_chunks = int(iters / CHUNK_FACTOR + math.ceil(iters % CHUNK_FACTOR/CHUNK_FACTOR))
+            n_chunks = CHUNK_FACTOR
 
-
-        lb = for_called_node.lb.owner.value.value.data
-        ub = for_called_node.ub.owner.value.value.data
-        it_range = ub - lb
-
-        for i in range(n_chunks):
-            chunk_for_loop = [chunk_op for chunk_op in chunks[i].walk() if isinstance(chunk_op, scf.For)][0]
-
-            # TODO: adapt this for the case where the number of iterations doesn't divide evenly by the CHUNK_FACTOR 
-            chunk_lb = chunk_for_loop.lb.owner.value.value.data
-            chunk_size = it_range / CHUNK_FACTOR
-            chunk_lb += int(i * chunk_size)
-            chunk_ub = int(chunk_lb + chunk_size)
-
-            chunk_for_loop.lb.owner.value = builtin.IntegerAttr.from_index_int_value(chunk_lb)
-            chunk_for_loop.ub.owner.value = builtin.IntegerAttr.from_index_int_value(chunk_ub)
+            chunks = []
+            chunk_calls = []
+            for i in range(n_chunks):
+                chunks.append(called_node.clone())
+                base_chunk_name = chunks[i].sym_name.data
+                if base_chunk_name not in base_chunk_name_counter:
+                    base_chunk_name_counter[base_chunk_name] = 0
+                chunk_name = base_chunk_name + f"_{str(base_chunk_name_counter[base_chunk_name])}"
+                base_chunk_name_counter[base_chunk_name] += 1
+                chunks[i].sym_name = builtin.StringAttr(chunk_name)
+                chunk_calls.append(func.Call(chunk_name, calls[0].arguments, call.res))
 
 
-        # Data partitioning
-        n_chunks = len(chunk_calls)
-        for chunk_idx,chunk_call in enumerate(chunk_calls):
-            node_inputs = []
+            lb = for_called_node.lb.owner.value.value.data
+            ub = for_called_node.ub.owner.value.value.data
+            it_range = ub - lb
 
-            for idx,arg in enumerate(chunk_call.arguments):
-                if isinstance(arg.type, memref.MemRefType):
-                    memref_dims = [dim.value.data for dim in arg.type.shape.data]
-                    sizes = memref_dims
-                    sizes[0] = int(sizes[0] / n_chunks)
+            for i in range(n_chunks):
+                chunk_for_loop = [chunk_op for chunk_op in chunks[i].walk() if isinstance(chunk_op, scf.For)][0]
 
-                    subview = memref.Subview.from_static_parameters(arg, arg.type, [chunk_idx * sizes[0]], sizes, [1])
-                    rewriter.insert_op_before(subview, calls[0])
-                    chunk_call.operands[idx] = subview.result
+                # TODO: adapt this for the case where the number of iterations doesn't divide evenly by the CHUNK_FACTOR 
+                chunk_lb = chunk_for_loop.lb.owner.value.value.data
+                chunk_size = it_range / CHUNK_FACTOR
+                chunk_lb += int(i * chunk_size)
+                chunk_ub = int(chunk_lb + chunk_size)
 
-                    node_inputs.append(subview.result.type)
-                else:
-                    node_inputs.append(arg)
+                chunk_for_loop.lb.owner.value = builtin.IntegerAttr.from_index_int_value(chunk_lb)
+                chunk_for_loop.ub.owner.value = builtin.IntegerAttr.from_index_int_value(chunk_ub)
 
-            # Update the type of the partitioned arguments in the node
-            update_function_type = builtin.FunctionType.from_lists(node_inputs, [])
-            chunks[chunk_idx].function_type = update_function_type
-            for chunk_arg_idx,chunk_arg in enumerate(chunks[chunk_idx].body.block.args):
-                chunk_arg.type = update_function_type.inputs.data[chunk_arg_idx]
 
-        for chunk in chunks:
-            rewriter.insert_op_before(chunk, called_node)
+            # Data partitioning
+            n_chunks = len(chunk_calls)
+            for chunk_idx,chunk_call in enumerate(chunk_calls):
+                node_inputs = []
 
-        for chunk_call in chunk_calls:
-            rewriter.insert_op_before(chunk_call, calls[0])
+                for idx,arg in enumerate(chunk_call.arguments):
+                    if isinstance(arg.type, memref.MemRefType):
+                        memref_dims = [dim.value.data for dim in arg.type.shape.data]
+                        sizes = memref_dims
+                        sizes[0] = int(sizes[0] / n_chunks)
 
-        rewriter.erase_op(calls[0])
+                        subview = memref.Subview.from_static_parameters(arg, arg.type, [chunk_idx * sizes[0]], sizes, [1])
+                        rewriter.insert_op_before(subview, call)
+                        chunk_call.operands[idx] = subview.result
 
-        # This is assuming all the chunk nodes run in parallel, i.e. there were enough resources to instantiate one module per node
-        new_top_level_node_latency = top_level_node.attributes['latency'].value.data / CHUNK_FACTOR
-        top_level_node.attributes['latency'] = builtin.FloatAttr(new_top_level_node_latency, builtin.Float32Type())
+                        node_inputs.append(subview.result.type)
+                    else:
+                        node_inputs.append(arg)
 
+                # Update the type of the partitioned arguments in the node
+                update_function_type = builtin.FunctionType.from_lists(node_inputs, [])
+                chunks[chunk_idx].function_type = update_function_type
+                for chunk_arg_idx,chunk_arg in enumerate(chunks[chunk_idx].body.block.args):
+                    chunk_arg.type = update_function_type.inputs.data[chunk_arg_idx]
+
+            for chunk in chunks:
+                rewriter.insert_op_before(chunk, called_node)
+                print("**** AFTER INSERTING CHUNK: ", chunk.sym_name)
+
+            for chunk_call in chunk_calls:
+                rewriter.insert_op_before(chunk_call, call)
+
+            rewriter.erase_op(call)
+
+            # This is assuming all the chunk nodes run in parallel, i.e. there were enough resources to instantiate one module per node
+            new_top_level_node_latency = top_level_node.attributes['latency'].value.data / CHUNK_FACTOR
+            top_level_node.attributes['latency'] = builtin.FloatAttr(new_top_level_node_latency, builtin.Float32Type())
+
+            chunk_for_loop = [chunk_op for chunk_op in chunks[0].walk() if isinstance(chunk_op, scf.For)][0]
+            if [chunk_for_op for chunk_for_op in chunk_for_loop.body.walk() if isinstance(chunk_for_op, func.Call)]: # the chunk node has a nested for loop
+                for chunk in chunks:
+                    chunk_node(chunk, rewriter, operations_to_remove)
 
 @dataclass
 class DSE(RewritePattern):
@@ -374,7 +394,12 @@ class DSE(RewritePattern):
             most_expensive_node_function = [node_function for node_function in find_module(op).ops if isinstance(node_function, func.FuncOp) and node_function.sym_name == most_expensive_node.name.root_reference][0]
             #most_expensive_node_function = [node_function.sym_name for node_function in find_module(op).ops if isinstance(node_function, func.FuncOp)]
             #print(most_expensive_node_function)
-            chunk_node(most_expensive_node_function, rewriter)
+            operations_to_remove : set[Operation] = set()
+            chunk_node(most_expensive_node_function, rewriter, operations_to_remove)
+
+            for operation_to_remove in operations_to_remove:
+                operation_to_remove.detach()
+                operation_to_remove.erase()
 
 @dataclass
 class DataflowGraph2(ModulePass):
