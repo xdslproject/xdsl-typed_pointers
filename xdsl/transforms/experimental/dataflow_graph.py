@@ -120,12 +120,15 @@ class PromoteLoopToFuncs(RewritePattern):
 
             operand_to_func_arg_idx_map = dict()
             visited_operands = set()
-            for idx, operand in enumerate(all_operands):
+
+            idx = 0
+            for operand in all_operands:
                 if operand not in visited_operands:
                     input_types.append(operand.type)
 
                     visited_operands.add(operand)
                     operand_to_func_arg_idx_map[operand] = idx
+                    idx += 1
 
                     self.func_args_map[node_name].append(operand)
 
