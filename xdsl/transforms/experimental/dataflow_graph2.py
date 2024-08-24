@@ -269,7 +269,7 @@ def chunk_node(top_level_node: dataflow.Node, rewriter: PatternRewriter, operati
                 chunk_name = base_chunk_name + f"_{str(base_chunk_name_counter[base_chunk_name])}"
                 base_chunk_name_counter[base_chunk_name] += 1
                 chunks[i].sym_name = builtin.StringAttr(chunk_name)
-                chunk_calls.append(func.Call(chunk_name, calls[0].arguments, call.res))
+                chunk_calls.append(func.Call(chunk_name, call.arguments, call.res))
 
 
             lb = for_called_node.lb.owner.value.value.data
@@ -295,13 +295,24 @@ def chunk_node(top_level_node: dataflow.Node, rewriter: PatternRewriter, operati
                 node_inputs = []
 
                 for idx,arg in enumerate(chunk_call.arguments):
+                    print("======> CHUNK ARG: ", arg)
                     if isinstance(arg.type, memref.MemRefType):
                         memref_dims = [dim.value.data for dim in arg.type.shape.data]
                         sizes = memref_dims
                         sizes[0] = int(sizes[0] / n_chunks)
 
-                        subview = memref.Subview.from_static_parameters(arg, arg.type, [chunk_idx * sizes[0]], sizes, [1])
-                        rewriter.insert_op_before(subview, call)
+
+                        subview_exists = False
+                        for use in arg.uses:
+                            op_using_subview = use.operation
+                            if isinstance(op_using_subview, memref.Subview) and top_level_node.is_ancestor(op_using_subview):
+                                subview = op_using_subview
+                                subview_exists = True
+                                break
+                        if not subview_exists:
+                            subview = memref.Subview.from_static_parameters(arg, arg.type, [chunk_idx * sizes[0]], sizes, [1])
+                            rewriter.insert_op_before(subview, call)
+
                         chunk_call.operands[idx] = subview.result
 
                         node_inputs.append(subview.result.type)
@@ -397,9 +408,9 @@ class DSE(RewritePattern):
             operations_to_remove : set[Operation] = set()
             chunk_node(most_expensive_node_function, rewriter, operations_to_remove)
 
-            for operation_to_remove in operations_to_remove:
-                operation_to_remove.detach()
-                operation_to_remove.erase()
+            #for operation_to_remove in operations_to_remove:
+            #    operation_to_remove.detach()
+            #    operation_to_remove.erase()
 
 @dataclass
 class DataflowGraph2(ModulePass):
