@@ -239,9 +239,9 @@ def chunk_node(top_level_node: dataflow.Node, rewriter: PatternRewriter, operati
 
     #for top_level_node in top_level_nodes:
     assert isinstance(top_level_node, func.FuncOp)
-    print("===== TOP LEVEL NODE: ", top_level_node.sym_name)
+    #print("===== TOP LEVEL NODE: ", top_level_node.sym_name)
     calls = [top_level_op for top_level_op in top_level_node.walk() if isinstance(top_level_op, func.Call)]
-    print("TOP LEVEL NODE: ", top_level_node.sym_name, "; N. CALLS: ", len(calls))
+    #print("TOP LEVEL NODE: ", top_level_node.sym_name, "; N. CALLS: ", len(calls))
 
     # Use to remove these nodes once they have already been split
     for call in calls:
@@ -251,7 +251,7 @@ def chunk_node(top_level_node: dataflow.Node, rewriter: PatternRewriter, operati
         # The chunking happens effectively in the for loop of the called node. This requires recalculating the bounds for each
         # clone and TODO: the view of the data for each new loop node
         for_called_node = [called_node_op for called_node_op in called_node.walk() if isinstance(called_node_op, scf.For)]
-        print("TOP LEVEL NODE: ", top_level_node.sym_name, "; N. FOR CALLED NODES: ", len(for_called_node))
+        #print("TOP LEVEL NODE: ", top_level_node.sym_name, "; N. FOR CALLED NODES: ", len(for_called_node))
         if for_called_node:
             for_called_node = for_called_node[0]
 
@@ -295,7 +295,7 @@ def chunk_node(top_level_node: dataflow.Node, rewriter: PatternRewriter, operati
                 node_inputs = []
 
                 for idx,arg in enumerate(chunk_call.arguments):
-                    print("======> CHUNK ARG: ", arg)
+                    #print("======> CHUNK ARG: ", arg)
                     if isinstance(arg.type, memref.MemRefType):
                         memref_dims = [dim.value.data for dim in arg.type.shape.data]
                         sizes = memref_dims
@@ -327,7 +327,7 @@ def chunk_node(top_level_node: dataflow.Node, rewriter: PatternRewriter, operati
 
             for chunk in chunks:
                 rewriter.insert_op_before(chunk, called_node)
-                print("**** AFTER INSERTING CHUNK: ", chunk.sym_name)
+                #print("**** AFTER INSERTING CHUNK: ", chunk.sym_name)
 
             for chunk_call in chunk_calls:
                 rewriter.insert_op_before(chunk_call, call)
