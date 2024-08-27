@@ -6,6 +6,7 @@ from xdsl.dialects import builtin, func, scf, memref
 from xdsl.dialects.experimental import dataflow
 
 from xdsl.ir import (
+    BlockArgument,
     MLContext,
     Operation,
 )
@@ -239,9 +240,7 @@ def chunk_node(top_level_node: dataflow.Node, rewriter: PatternRewriter, operati
 
     #for top_level_node in top_level_nodes:
     assert isinstance(top_level_node, func.FuncOp)
-    #print("===== TOP LEVEL NODE: ", top_level_node.sym_name)
     calls = [top_level_op for top_level_op in top_level_node.walk() if isinstance(top_level_op, func.Call)]
-    #print("TOP LEVEL NODE: ", top_level_node.sym_name, "; N. CALLS: ", len(calls))
 
     # Use to remove these nodes once they have already been split
     for call in calls:
@@ -251,7 +250,6 @@ def chunk_node(top_level_node: dataflow.Node, rewriter: PatternRewriter, operati
         # The chunking happens effectively in the for loop of the called node. This requires recalculating the bounds for each
         # clone and TODO: the view of the data for each new loop node
         for_called_node = [called_node_op for called_node_op in called_node.walk() if isinstance(called_node_op, scf.For)]
-        #print("TOP LEVEL NODE: ", top_level_node.sym_name, "; N. FOR CALLED NODES: ", len(for_called_node))
         if for_called_node:
             for_called_node = for_called_node[0]
 
@@ -270,6 +268,7 @@ def chunk_node(top_level_node: dataflow.Node, rewriter: PatternRewriter, operati
                 base_chunk_name_counter[base_chunk_name] += 1
                 chunks[i].sym_name = builtin.StringAttr(chunk_name)
                 chunk_calls.append(func.Call(chunk_name, call.arguments, call.res))
+                chunks[i].original_name = base_chunk_name
 
 
             lb = for_called_node.lb.owner.value.value.data
@@ -295,7 +294,6 @@ def chunk_node(top_level_node: dataflow.Node, rewriter: PatternRewriter, operati
                 node_inputs = []
 
                 for idx,arg in enumerate(chunk_call.arguments):
-                    #print("======> CHUNK ARG: ", arg)
                     if isinstance(arg.type, memref.MemRefType):
                         memref_dims = [dim.value.data for dim in arg.type.shape.data]
                         sizes = memref_dims
@@ -327,12 +325,41 @@ def chunk_node(top_level_node: dataflow.Node, rewriter: PatternRewriter, operati
 
             for chunk in chunks:
                 rewriter.insert_op_before(chunk, called_node)
-                #print("**** AFTER INSERTING CHUNK: ", chunk.sym_name)
 
             for chunk_call in chunk_calls:
                 rewriter.insert_op_before(chunk_call, call)
 
             rewriter.erase_op(call)
+
+            # Add inter-chunk dependencies:
+            for chunk_idx,chunk in enumerate(chunks):
+                if chunk_idx > 0: # input token from previous chunk
+                    previous_chunk_out_token = chunk_calls[chunk_idx-1].results[0]
+                    new_chunk_call_args = list(chunk_calls[chunk_idx].arguments) + [previous_chunk_out_token]
+                    chunk_call_with_dependency = func.Call(chunk_calls[chunk_idx].callee, new_chunk_call_args, dataflow.Token())
+                    rewriter.insert_op_before(chunk_call_with_dependency, chunk_calls[chunk_idx])
+                    rewriter.erase_op(chunk_calls[chunk_idx])
+                    chunk_calls[chunk_idx] = chunk_call_with_dependency
+
+                token_out = dataflow.Token()
+                chunk_function_type_outputs_list = list(chunk.function_type.outputs.data)
+                chunk_function_type_outputs_list.append(token_out)
+
+
+                function_type_with_token = builtin.FunctionType.from_lists(chunk.function_type.inputs.data, chunk_function_type_outputs_list)
+                chunk.function_type = function_type_with_token
+                chunk_return = [chunk_op for chunk_op in chunk.body.ops if isinstance(chunk_op, func.Return)][0]
+
+                gen_chunk_token = dataflow.GenToken()
+                rewriter.insert_op_before(gen_chunk_token, chunk_return)
+                chunk_return.operands = [gen_chunk_token.res]
+
+                # Add the output token to the function call
+                chunk_calls[chunk_idx].result_types = [builtin.IntegerAttr.from_int_and_width(2134,32)]
+                chunk_call_with_out_token = func.Call(chunk_calls[chunk_idx].callee, chunk_calls[chunk_idx].arguments, dataflow.Token())
+                rewriter.insert_op_before(chunk_call_with_out_token, chunk_calls[chunk_idx])
+                rewriter.erase_op(chunk_calls[chunk_idx])
+                chunk_calls[chunk_idx] = chunk_call_with_out_token # the chunk_calls list is used to create the dependencies
 
             # This is assuming all the chunk nodes run in parallel, i.e. there were enough resources to instantiate one module per node
             new_top_level_node_latency = top_level_node.attributes['latency'].value.data / CHUNK_FACTOR

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from xdsl.ir import Dialect, Region, Attribute, Sequence, Block, SSAValue, Operation
-from xdsl.irdl import irdl_op_definition, region_def, IRDLOperation, VarOperand, AnyAttr, var_result_def, var_operand_def, VarOpResult, opt_attr_def, operand_def, irdl_attr_definition, ParametrizedAttribute, ParameterDef, attr_def
+from xdsl.ir import Dialect, Region, Attribute, Sequence, Block, SSAValue, Operation, TypeAttribute, OpResult
+from xdsl.irdl import irdl_op_definition, region_def, IRDLOperation, VarOperand, AnyAttr, var_result_def, var_operand_def, VarOpResult, opt_attr_def, result_def, irdl_attr_definition, ParametrizedAttribute, ParameterDef, attr_def
 from xdsl.dialects.builtin import StringAttr, FunctionType, SymbolRefAttr, ArrayAttr, DictionaryAttr, IndexType
 from xdsl.dialects import builtin, memref, func
 from xdsl.traits import HasParent, IsTerminator, SymbolOpInterface, IsolatedFromAbove
@@ -16,6 +16,29 @@ from xdsl.parser import Parser
 from xdsl.dialects.utils import print_func_op_like, print_return_op_like, parse_call_op_like, print_call_op_like, parse_func_op_like
 
 from xdsl.utils.hints import isa
+
+#@irdl_attr_definition
+#class Token(TypeAttribute, ParametrizedAttribute):
+#    name = "dataflow.token"
+#
+#    token_id: ParameterDef[Attribute]
+#
+#    @staticmethod
+#    def get(token_id: Attribute):
+#        return Token([token_id])
+    
+@irdl_attr_definition
+class Token(ParametrizedAttribute, TypeAttribute):
+    name = "df.token"
+
+@irdl_op_definition
+class GenToken(IRDLOperation):
+    name = "df.gen_token"
+
+    res: OpResult = result_def(Token)
+
+    def __init__(self):
+        super().__init__(result_types=[Token()])
 
 
 @irdl_op_definition
@@ -420,5 +443,7 @@ Dataflow = Dialect(
         Top,
         TopEnd
     ],
-    []
+    [
+        Token
+    ]
 )
